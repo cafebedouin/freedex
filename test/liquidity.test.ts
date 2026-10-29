@@ -76,3 +76,14 @@ describe("liquidity on an N2T pool", () => {
     expect(chain.execute(red, { signers: [user], throw: false })).toBe(false);
   });
 });
+
+describe("deposit quotes agree from either side", () => {
+  it("tokens-first gives the ERG that ERG-first would have asked for the same tokens", async () => {
+    const { depositQuote, depositQuoteFromTokens } = await import("../src/amm");
+    const p = { boxId: "", nft: "", lpTokenId: "", lpReserved: 9_223_372_036_854_775_807n - 1_000_000n, tokenId: "", x: 1_000n * 1_000_000_000n, y: 50_000_000n, feeNum: 997n };
+    const a = depositQuote(p, 10n * 1_000_000_000n);
+    const b = depositQuoteFromTokens(p, a.tokenIn);
+    expect(b.ergIn).toBe(10n * 1_000_000_000n);
+    expect(b.lpOut).toBe(a.lpOut);
+  });
+});

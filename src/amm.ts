@@ -129,6 +129,15 @@ export function depositQuote(p: PoolView, ergIn: bigint): { tokenIn: bigint; lpO
   return { tokenIn, lpOut };
 }
 
+/** The other way round: the ERG that matches `tokenIn` at the pool's ratio (rounded up), and the LP out. */
+export function depositQuoteFromTokens(p: PoolView, tokenIn: bigint): { ergIn: bigint; lpOut: bigint } {
+  if (tokenIn <= 0n) return { ergIn: 0n, lpOut: 0n };
+  const ergIn = (tokenIn * p.x + p.y - 1n) / p.y;
+  const supply = lpSupply(p);
+  const lpOut = min((ergIn * supply) / p.x, (tokenIn * supply) / p.y);
+  return { ergIn, lpOut };
+}
+
 /** ERG and tokens returned for `lpIn` LP tokens, the pool's rule rounded down. */
 export function redeemQuote(p: PoolView, lpIn: bigint): { ergOut: bigint; tokenOut: bigint } {
   if (lpIn <= 0n) return { ergOut: 0n, tokenOut: 0n };
@@ -197,4 +206,163 @@ export function buildRedeem(p: RedeemParams): EIP12UnsignedTransaction {
 
 function min(a: bigint, b: bigint): bigint {
   return a < b ? a : b;
+}
+
+// ---- token-to-token pools (T2T) ----------------------------------------------------------------
+// Same rules as N2T (Pool.sc, t2t): reserves are tokens 2 and 3, the box's ERG is a constant minimum that the
+// successor must keep (preservedErgs). The deployed tree reads R4 as an Int (the repository's Pool.sc says Long;
+// the chain disagrees, and the mock chain's evaluator showed it: `Cannot getReg[Int](4)` against a Long).
+
+/** The T2T pool ErgoTree, identical for every pool (281 of 281 on mainnet, scripts/t2t-list.ts, 2026-10-29). */
+export const T2T_POOL_TREE = "19a9030f040004020402040404040406040605feffffffffffffffff0105feffffffffffffffff01050004d00f0400040005000500d81ad601b2a5730000d602e4c6a70404d603db63087201d604db6308a7d605b27203730100d606b27204730200d607b27203730300d608b27204730400d609b27203730500d60ab27204730600d60b9973078c720602d60c999973088c720502720bd60d8c720802d60e998c720702720dd60f91720e7309d6108c720a02d6117e721006d6127e720e06d613998c7209027210d6147e720d06d615730ad6167e721306d6177e720c06d6187e720b06d6199c72127218d61a9c72167218d1edededededed93c27201c2a793e4c672010404720292c17201c1a793b27203730b00b27204730c00938c7205018c720601ed938c7207018c720801938c7209018c720a019593720c730d95720f929c9c721172127e7202069c7ef07213069a9c72147e7215067e9c720e7e72020506929c9c721472167e7202069c7ef0720e069a9c72117e7215067e9c72137e7202050695ed720f917213730e907217a19d721972149d721a7211ed9272199c7217721492721a9c72177211";
+export const T2T_POOL_TEMPLATE_SHA256 = "3c09deff3b5f49329149d18e02aab675ef6957bf6559a5c7dba817fee883fb3e";
+
+export interface T2TPoolView {
+  boxId: string;
+  nft: string;
+  lpTokenId: string;
+  lpReserved: bigint;
+  xId: string;
+  yId: string;
+  x: bigint;
+  y: bigint;
+  feeNum: bigint;
+  value: bigint;
+}
+
+export function describeT2TPool(box: Box<Amount>): T2TPoolView {
+  if (box.ergoTree !== T2T_POOL_TREE) throw new Error("not a T2T pool box");
+  if (box.assets.length !== 4) throw new Error("T2T pool box must hold NFT, LP token and two tokens");
+  const r4 = box.additionalRegisters.R4;
+  if (!r4) throw new Error("pool box has no R4");
+  return {
+    boxId: box.boxId,
+    nft: box.assets[0].tokenId,
+    lpTokenId: box.assets[1].tokenId,
+    lpReserved: BigInt(box.assets[1].amount),
+    xId: box.assets[2].tokenId,
+    yId: box.assets[3].tokenId,
+    x: BigInt(box.assets[2].amount),
+    y: BigInt(box.assets[3].amount),
+    feeNum: BigInt(SConstant.from<number | bigint>(r4).data),
+    value: BigInt(box.value),
+  };
+}
+
+/** A T2T pool seen from one side: pay `inId`, receive the other token. */
+export function t2tSides(p: T2TPoolView, inId: string): { reserveIn: bigint; reserveOut: bigint; outId: string } {
+  if (inId === p.xId) return { reserveIn: p.x, reserveOut: p.y, outId: p.yId };
+  if (inId === p.yId) return { reserveIn: p.y, reserveOut: p.x, outId: p.xId };
+  throw new Error("token is not in this pool");
+}
+
+export function quoteT2T(p: T2TPoolView, inId: string, amountIn: bigint): bigint {
+  if (amountIn <= 0n) return 0n;
+  const { reserveIn, reserveOut } = t2tSides(p, inId);
+  return (reserveOut * amountIn * p.feeNum) / (reserveIn * 1000n + amountIn * p.feeNum);
+}
+
+export function priceImpactBpsT2T(p: T2TPoolView, inId: string, amountIn: bigint): bigint {
+  const out = quoteT2T(p, inId, amountIn);
+  if (out === 0n) return 0n;
+  const { reserveIn, reserveOut } = t2tSides(p, inId);
+  const spotOut = (reserveOut * amountIn * p.feeNum) / (reserveIn * 1000n);
+  return spotOut === 0n ? 0n : ((spotOut - out) * 10_000n) / spotOut;
+}
+
+function t2tSuccessor(p: T2TPoolView, box: Box<Amount>, x: bigint, y: bigint, lpReserved: bigint): OutputBuilder {
+  return new OutputBuilder(p.value, T2T_POOL_TREE)
+    .addTokens([
+      { tokenId: p.nft, amount: 1n },
+      { tokenId: p.lpTokenId, amount: lpReserved },
+      { tokenId: p.xId, amount: x },
+      { tokenId: p.yId, amount: y },
+    ])
+    .setAdditionalRegisters({ R4: box.additionalRegisters.R4 as string });
+}
+
+export interface SwapT2TParams {
+  height: number;
+  inputs: Box<Amount>[];
+  user: ErgoAddress;
+  poolBox: Box<Amount>;
+  inId: string;
+  amountIn: bigint;
+  minOut: bigint;
+}
+
+export function buildSwapT2T(p: SwapT2TParams): EIP12UnsignedTransaction {
+  const pool = describeT2TPool(p.poolBox);
+  const out = quoteT2T(pool, p.inId, p.amountIn);
+  if (out <= 0n) throw new Error("the trade is too small to receive anything");
+  if (out < p.minOut) throw new Error(`the pool would pay ${out}, below the minimum ${p.minOut}`);
+  const { outId } = t2tSides(pool, p.inId);
+  const inIsX = p.inId === pool.xId;
+  const x1 = inIsX ? pool.x + p.amountIn : pool.x - out;
+  const y1 = inIsX ? pool.y - out : pool.y + p.amountIn;
+  if (x1 <= 0n || y1 <= 0n) throw new Error("the trade would empty the pool");
+  const received = new OutputBuilder(1_000_000n, p.user).addTokens({ tokenId: outId, amount: out });
+  return new TransactionBuilder(p.height)
+    .from([p.poolBox, ...p.inputs])
+    .to([t2tSuccessor(pool, p.poolBox, x1, y1, pool.lpReserved), received])
+    .sendChangeTo(p.user)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
+}
+
+export function lpSupplyT2T(p: T2TPoolView): bigint {
+  return INITIALLY_LOCKED_LP - p.lpReserved;
+}
+
+/** Y that matches `xIn` at the pool's ratio (rounded up), and the LP out. */
+export function depositQuoteT2T(p: T2TPoolView, xIn: bigint): { yIn: bigint; lpOut: bigint } {
+  if (xIn <= 0n) return { yIn: 0n, lpOut: 0n };
+  const yIn = (xIn * p.y + p.x - 1n) / p.x;
+  const supply = lpSupplyT2T(p);
+  return { yIn, lpOut: min((xIn * supply) / p.x, (yIn * supply) / p.y) };
+}
+
+export function depositQuoteT2TFromY(p: T2TPoolView, yIn: bigint): { xIn: bigint; lpOut: bigint } {
+  if (yIn <= 0n) return { xIn: 0n, lpOut: 0n };
+  const xIn = (yIn * p.x + p.y - 1n) / p.y;
+  const supply = lpSupplyT2T(p);
+  return { xIn, lpOut: min((xIn * supply) / p.x, (yIn * supply) / p.y) };
+}
+
+export function redeemQuoteT2T(p: T2TPoolView, lpIn: bigint): { xOut: bigint; yOut: bigint } {
+  if (lpIn <= 0n) return { xOut: 0n, yOut: 0n };
+  const supply = lpSupplyT2T(p);
+  return { xOut: (lpIn * p.x) / supply, yOut: (lpIn * p.y) / supply };
+}
+
+export function buildDepositT2T(p: { height: number; inputs: Box<Amount>[]; user: ErgoAddress; poolBox: Box<Amount>; xIn: bigint }): EIP12UnsignedTransaction {
+  const pool = describeT2TPool(p.poolBox);
+  const { yIn, lpOut } = depositQuoteT2T(pool, p.xIn);
+  if (lpOut <= 0n) throw new Error("the deposit is too small to earn any LP token");
+  const received = new OutputBuilder(1_000_000n, p.user).addTokens({ tokenId: pool.lpTokenId, amount: lpOut });
+  return new TransactionBuilder(p.height)
+    .from([p.poolBox, ...p.inputs])
+    .to([t2tSuccessor(pool, p.poolBox, pool.x + p.xIn, pool.y + yIn, pool.lpReserved - lpOut), received])
+    .sendChangeTo(p.user)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
+}
+
+export function buildRedeemT2T(p: { height: number; inputs: Box<Amount>[]; user: ErgoAddress; poolBox: Box<Amount>; lpIn: bigint }): EIP12UnsignedTransaction {
+  const pool = describeT2TPool(p.poolBox);
+  const { xOut, yOut } = redeemQuoteT2T(pool, p.lpIn);
+  if (xOut <= 0n && yOut <= 0n) throw new Error("the redemption is too small to return anything");
+  const received = new OutputBuilder(1_000_000n, p.user).addTokens([
+    { tokenId: pool.xId, amount: xOut },
+    { tokenId: pool.yId, amount: yOut },
+  ]);
+  return new TransactionBuilder(p.height)
+    .from([p.poolBox, ...p.inputs])
+    .to([t2tSuccessor(pool, p.poolBox, pool.x - xOut, pool.y - yOut, pool.lpReserved + p.lpIn), received])
+    .sendChangeTo(p.user)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }

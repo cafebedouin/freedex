@@ -10,14 +10,16 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
 
 ## What it does
 
-- **Swap** on [ErgoDEX v1](https://github.com/spectrum-finance/ergo-dex) ERG-to-token pools (the pools Spectrum and
-  Mew trade on), straight against the pool box in one transaction. No order box, no off-chain executor, no interface
-  fee. The page quotes from the pool's own rule, shows the price impact, and refuses to build if the pool has moved
-  past your slippage tolerance.
+- **Swap** on [ErgoDEX v1](https://github.com/spectrum-finance/ergo-dex) pools (the pools Spectrum and Mew trade
+  on), ERG-to-token and token-to-token, straight against the pool box in one transaction. No order box, no
+  off-chain executor, no interface fee. The page quotes from the pool's own rule, shows the price impact, and refuses
+  to build if the pool has moved past your slippage tolerance. Two tokens without a direct pool are two swaps through
+  ERG.
 - **Limit orders** on [Machina Finance](https://github.com/machinafi/sdk): place one, fill one, close your own.
   Open orders are grouped by token, best price first on each side.
-- **Pool**: add or remove liquidity on the same pools, straight to the pool box by its own rule. LP tokens are plain
-  tokens in your wallet.
+- **Pool**: add or remove liquidity on the same pools, ERG pairs and token pairs, straight to the pool box by its own
+  rule. Type either side of a deposit and the other fills in at the pool's ratio. LP tokens are plain tokens in your
+  wallet.
 
 The swap and pool token lists are a static whitelist of tokens whose deepest pool held 100 ERG or more when the list
 was generated (`src/tokenlist.json`, `npm run tokens` to refresh), plus an "other token" entry for any token id.
@@ -77,7 +79,7 @@ contents of `dist/`.
   arithmetic the pool script checks. The pool is re-read right before the transaction is built.
 - Limit orders: the contract's price is an integer in nanoERG per smallest token unit. The page shows ERG per whole
   token and refuses a price it would have to round. Orders are labelled by what the taker does, as the contract does.
-- Not yet: token-to-token pools and orders, grid orders, a mobile (ErgoPay) signing path.
+- Not yet: token-to-token limit orders, grid orders, a mobile (ErgoPay) signing path, multi-hop swaps in one go.
 - A deposit needs tokens at the pool's ratio; the page computes the token amount from the ERG amount and tells you
   if the wallet is short before anything is signed.
 
@@ -99,6 +101,7 @@ pocket change: this is days old.
 | pool swap back, rsADA to ERG | `7303dce957bf31a2d4d8518a8a639b3b464c648a7304bd905044aafac163eea8` |
 | add liquidity, 0.003 ERG + FAKU | `5eaa12e353aa67277823793ee7f3892193fe50fd93d7e26c3a8c8528a0747b17` |
 | remove liquidity, the LP tokens back | `fd30f0e688047b91dc3461ee322ae9dbcb65bbaf4c3ebdd1196cc80742e0f4aa` |
+| token-to-token swap, FAKU to CYPX | `643be27f7a2f28a81d88a3297a8107eff790bd05fda26af21249acd7558eb2c5` |
 
 ## Licence
 

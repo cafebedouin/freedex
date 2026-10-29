@@ -1,6 +1,10 @@
 import type { Box } from "@fleet-sdk/common";
-import { buildDeposit, buildRedeem, buildSwap, depositQuote, describePool, lpSupply, priceImpactBps, quote, redeemQuote, type SwapDirection } from "./amm";
-import { Explorer, type PoolEntry, type TokenInfo } from "./explorer";
+import {
+  buildDeposit, buildDepositT2T, buildRedeem, buildRedeemT2T, buildSwap, buildSwapT2T, depositQuote, depositQuoteFromTokens,
+  depositQuoteT2T, depositQuoteT2TFromY, describePool, describeT2TPool, lpSupply, lpSupplyT2T, priceImpactBps, priceImpactBpsT2T,
+  quote, quoteT2T, redeemQuote, redeemQuoteT2T, t2tSides, type SwapDirection,
+} from "./amm";
+import { Explorer, type PoolEntry, type T2TPoolEntry, type TokenInfo } from "./explorer";
 import { FEE, buildClose, buildCreate, buildFill, capacity, describe, type OrderView, type OwnerSide } from "./orders";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "./units";
 import { availableWallets, connect, disconnect, signAndSubmit, utxos, type Wallet } from "./wallet";
@@ -101,6 +105,49 @@ async function send(build: Builder): Promise<string> {
   return txId;
 }
 
+// ---- assets ------------------------------------------------------------------------------------
+
+const ERG = "ERG";
+const OTHER = "__other__";
+let t2tPools: T2TPoolEntry[] = [];
+
+function nameOf(id: string): string {
+  if (id === ERG) return "ERG";
+  return tokens.get(id)?.name || id.slice(0, 8);
+}
+function decimalsOf(id: string): number {
+  if (id === ERG) return ERG_DECIMALS;
+  return tokens.get(id)?.decimals ?? 0;
+}
+function rememberToken(id: string, name: string, decimals: number) {
+  if (!tokens.has(id)) tokens.set(id, { id, name, decimals });
+}
+
+/** The deepest live ERG pool for a token id, if the explorer listed one. */
+function deepestPool(tokenId: string): PoolEntry | undefined {
+  return pools.filter((p) => p.box.assets[2].tokenId === tokenId).sort((a, b) => (b.box.value > a.box.value ? 1 : -1))[0];
+}
+
+/** The token-to-token pool holding both tokens with the most of `inId`. */
+function deepestT2T(inId: string, outId: string): T2TPoolEntry | undefined {
+  const has = (e: T2TPoolEntry, id: string) => e.box.assets[2].tokenId === id || e.box.assets[3].tokenId === id;
+  return t2tPools
+    .filter((e) => has(e, inId) && has(e, outId))
+    .sort((a, b) => (t2tSides(describeT2TPool(b.box), inId).reserveIn > t2tSides(describeT2TPool(a.box), inId).reserveIn ? 1 : -1))[0];
+}
+
+/** ERG, the whitelist (with the live ERG pool's depth), then "other". */
+function fillAssetSelect(sel: HTMLSelectElement, current: string) {
+  sel.replaceChildren(new Option("ERG", ERG));
+  for (const t of tokenlist.tokens) {
+    const live = deepestPool(t.id);
+    sel.append(new Option(`${t.name || t.id.slice(0, 8)}${live ? `  (${formatUnits(live.box.value, ERG_DECIMALS, 0)} ERG pool)` : ""}`, t.id));
+  }
+  if (current && current !== ERG && !tokenlist.tokens.some((t) => t.id === current)) sel.append(new Option(`${nameOf(current)} (${current.slice(0, 8)}…)`, current));
+  sel.append(new Option("other token…", OTHER));
+  sel.value = current;
+}
+
 // ---- swap --------------------------------------------------------------------------------------
 
 const swapIn = $<HTMLInputElement>("swap-in");
@@ -108,47 +155,47 @@ const swapOut = $<HTMLInputElement>("swap-out");
 const swapFrom = $<HTMLSelectElement>("swap-from");
 const swapTo = $<HTMLSelectElement>("swap-to");
 const swapGo = $<HTMLButtonElement>("swap-go");
-let direction: SwapDirection = "erg-to-token";
-let selectedToken = "";
+let fromId = ERG;
+let toId = "";
+let otherSide: "from" | "to" = "to";
 
-const OTHER = "__other__";
+type Route =
+  | { kind: "n2t"; entry: PoolEntry; direction: SwapDirection }
+  | { kind: "t2t"; entry: T2TPoolEntry }
+  | { kind: "none"; why: string };
 
-/** The deepest live pool for a token id, if the explorer listed one. */
-function deepestPool(tokenId: string): PoolEntry | undefined {
-  return pools.filter((p) => p.box.assets[2].tokenId === tokenId).sort((a, b) => (b.box.value > a.box.value ? 1 : -1))[0];
-}
-
-/** Options: the static whitelist (tokens whose deepest pool held 100 ERG or more when the list was made), then "other". */
-function tokenSelect(sel: HTMLSelectElement) {
-  sel.replaceChildren();
-  for (const t of tokenlist.tokens) {
-    const live = deepestPool(t.id);
-    const o = new Option(`${t.name || t.id.slice(0, 8)}${live ? `  (${formatUnits(live.box.value, ERG_DECIMALS, 0)} ERG pool)` : ""}`, t.id);
-    sel.append(o);
+function route(): Route {
+  if (!fromId || !toId) return { kind: "none", why: "pick both assets" };
+  if (fromId === toId) return { kind: "none", why: "pick two different assets" };
+  if (fromId === ERG || toId === ERG) {
+    const tokenId = fromId === ERG ? toId : fromId;
+    const entry = deepestPool(tokenId);
+    if (!entry) return { kind: "none", why: `no ErgoDEX ERG pool holds ${nameOf(tokenId)}` };
+    return { kind: "n2t", entry, direction: fromId === ERG ? "erg-to-token" : "token-to-erg" };
   }
-  sel.append(new Option("other token…", OTHER));
-  if (selectedToken) sel.value = selectedToken;
+  const entry = deepestT2T(fromId, toId);
+  if (!entry) return { kind: "none", why: `no direct ${nameOf(fromId)}/${nameOf(toId)} pool: swap to ERG first, then to ${nameOf(toId)}` };
+  return { kind: "t2t", entry };
 }
 
 function renderSwapSelectors() {
-  // the token side is a select; the ERG side is fixed text
-  const tokenSide = direction === "erg-to-token" ? swapTo : swapFrom;
-  const ergSide = direction === "erg-to-token" ? swapFrom : swapTo;
-  tokenSelect(tokenSide);
-  ergSide.replaceChildren(new Option("ERG", "ERG"));
+  fillAssetSelect(swapFrom, fromId);
+  fillAssetSelect(swapTo, toId);
   const otherRow = $<HTMLDivElement>("swap-other-row");
-  tokenSide.onchange = () => {
-    if (tokenSide.value === OTHER) {
-      otherRow.hidden = false;
-      return;
-    }
-    otherRow.hidden = true;
-    selectedToken = tokenSide.value;
-    renderQuote();
-    void renderBalance();
-  };
-  if (!selectedToken) selectedToken = tokenSide.value;
-  void renderBalance();
+  for (const [sel, side] of [[swapFrom, "from"], [swapTo, "to"]] as const) {
+    sel.onchange = () => {
+      if (sel.value === OTHER) {
+        otherSide = side;
+        otherRow.hidden = false;
+        return;
+      }
+      otherRow.hidden = true;
+      if (side === "from") fromId = sel.value;
+      else toId = sel.value;
+      renderQuote();
+      void renderBalance();
+    };
+  }
 }
 
 $<HTMLButtonElement>("swap-other-go").onclick = () => {
@@ -157,11 +204,16 @@ $<HTMLButtonElement>("swap-other-go").onclick = () => {
     log("a token id is 64 hex characters");
     return;
   }
-  if (!deepestPool(id)) {
-    log(`no ErgoDEX v1 ERG pool holds token ${id.slice(0, 10)}…`);
+  const n2t = deepestPool(id);
+  const inT2T = t2tPools.some((e) => e.box.assets[2].tokenId === id || e.box.assets[3].tokenId === id);
+  if (!n2t && !inT2T) {
+    log(`no ErgoDEX pool holds token ${id.slice(0, 10)}…`);
     return;
   }
-  selectedToken = id;
+  if (!tokens.has(id)) void tokenInfo(id).then(() => renderSwapSelectors());
+  if (otherSide === "from") fromId = id;
+  else toId = id;
+  renderSwapSelectors();
   renderQuote();
   void renderBalance();
 };
@@ -170,20 +222,16 @@ $<HTMLButtonElement>("swap-other-go").onclick = () => {
 async function renderBalance() {
   const el = $<HTMLDivElement>("swap-balance");
   el.replaceChildren();
-  const p = selectedPool();
-  if (!wallet || !p) return;
+  if (!wallet || !fromId) return;
   try {
-    const pool = describePool(p.box);
-    const paying = direction === "erg-to-token" ? "ERG" : pool.tokenId;
-    const dec = direction === "erg-to-token" ? ERG_DECIMALS : p.tokenDecimals;
-    const raw = BigInt(await wallet.api.get_balance(paying));
-    const reserve = direction === "erg-to-token" ? FEE + 1_000_000n : 0n; // fee plus a minimum change box
+    const raw = BigInt(await wallet.api.get_balance(fromId));
+    const reserve = fromId === ERG ? FEE + 1_000_000n : 0n;
     const max = raw > reserve ? raw - reserve : 0n;
-    el.append(`balance ${formatUnits(raw, dec)} ${direction === "erg-to-token" ? "ERG" : p.tokenName || "tokens"} `);
+    el.append(`balance ${formatUnits(raw, decimalsOf(fromId))} ${nameOf(fromId)} `);
     const b = document.createElement("button");
     b.textContent = "max";
     b.onclick = () => {
-      swapIn.value = formatUnits(max, dec);
+      swapIn.value = formatUnits(max, decimalsOf(fromId));
       renderQuote();
     };
     el.append(b);
@@ -192,29 +240,43 @@ async function renderBalance() {
   }
 }
 
-function selectedPool(): PoolEntry | undefined {
-  return selectedToken ? deepestPool(selectedToken) : undefined;
-}
-
 function slippageBps(): bigint {
   const t = $<HTMLInputElement>("slippage").value.trim() || "1";
   return parseUnits(t, 2); // percent with two decimals -> basis points
 }
 
 function renderQuote() {
-  const dl = $<HTMLDListElement>("swap-quote");
-  dl.replaceChildren();
+  const dlEl = $<HTMLDListElement>("swap-quote");
+  dlEl.replaceChildren();
   swapGo.disabled = true;
-  const p = selectedPool();
-  if (!p) return;
-  const pool = describePool(p.box);
-  const inDec = direction === "erg-to-token" ? ERG_DECIMALS : p.tokenDecimals;
-  const outDec = direction === "erg-to-token" ? p.tokenDecimals : ERG_DECIMALS;
-  const name = p.tokenName || pool.tokenId.slice(0, 8);
+  swapOut.value = "";
+  const r = route();
+  $("swap-route").textContent = r.kind === "none" ? r.why : r.kind === "n2t" ? `ERG pool, ${formatUnits(r.entry.box.value, ERG_DECIMALS, 0)} ERG deep` : `direct ${nameOf(fromId)}/${nameOf(toId)} pool`;
+  if (r.kind === "none") return;
+  const inDec = decimalsOf(fromId), outDec = decimalsOf(toId);
   const rows: [string, string][] = [];
-  const spot = pool.y === 0n ? 0n : (pool.x * 10n ** BigInt(p.tokenDecimals)) / pool.y; // nanoERG per whole token
-  rows.push(["Pool price", `${formatUnits(spot, ERG_DECIMALS, 6)} ERG per ${name}`]);
-  rows.push(["Pool fee", `${formatUnits(1000n - pool.feeNum, 1)}% to liquidity providers`]);
+  let feeNum: bigint;
+  let quoteFn: (amountIn: bigint) => bigint;
+  let impactFn: (amountIn: bigint) => bigint;
+  if (r.kind === "n2t") {
+    const pool = describePool(r.entry.box);
+    feeNum = pool.feeNum;
+    const tokDec = r.entry.tokenDecimals;
+    const spot = pool.y === 0n ? 0n : (pool.x * 10n ** BigInt(tokDec)) / pool.y;
+    rows.push(["Pool price", `${formatUnits(spot, ERG_DECIMALS, 6)} ERG per ${nameOf(r.entry.box.assets[2].tokenId)}`]);
+    quoteFn = (a) => quote(pool, r.direction, a);
+    impactFn = (a) => priceImpactBps(pool, r.direction, a);
+  } else {
+    const pool = describeT2TPool(r.entry.box);
+    feeNum = pool.feeNum;
+    const { reserveIn, reserveOut } = t2tSides(pool, fromId);
+    const spot = reserveIn === 0n ? 0n : (reserveOut * 10n ** BigInt(inDec)) / reserveIn; // out units per whole in
+    rows.push(["Pool price", `${formatUnits(spot, outDec, 6)} ${nameOf(toId)} per ${nameOf(fromId)}`]);
+    rows.push(["Pool reserves", `${formatUnits(pool.x, decimalsOf(pool.xId))} ${nameOf(pool.xId)} and ${formatUnits(pool.y, decimalsOf(pool.yId))} ${nameOf(pool.yId)}`]);
+    quoteFn = (a) => quoteT2T(pool, fromId, a);
+    impactFn = (a) => priceImpactBpsT2T(pool, fromId, a);
+  }
+  rows.push(["Pool fee", `${formatUnits(1000n - feeNum, 1)}% to liquidity providers`]);
   let amountIn = 0n;
   try {
     if (swapIn.value.trim()) amountIn = parseUnits(swapIn.value, inDec);
@@ -222,47 +284,45 @@ function renderQuote() {
     rows.push(["Amount", err(e)]);
   }
   if (amountIn > 0n) {
-    const out = quote(pool, direction, amountIn);
+    const out = quoteFn(amountIn);
     swapOut.value = formatUnits(out, outDec);
     const minOut = out - (out * slippageBps()) / 10_000n;
-    rows.push(["You receive (estimate)", `${formatUnits(out, outDec)} ${direction === "erg-to-token" ? name : "ERG"}`]);
-    rows.push(["Minimum after slippage", `${formatUnits(minOut, outDec)}`]);
-    rows.push(["Price impact", `${formatUnits(priceImpactBps(pool, direction, amountIn), 2)}%`]);
+    rows.push(["You receive (estimate)", `${formatUnits(out, outDec)} ${nameOf(toId)}`]);
+    rows.push(["Minimum after slippage", formatUnits(minOut, outDec)]);
+    rows.push(["Price impact", `${formatUnits(impactFn(amountIn), 2)}%`]);
     rows.push(["Miner fee", `${formatUnits(FEE, ERG_DECIMALS)} ERG (the only fee this page adds)`]);
     swapGo.disabled = !wallet || out <= 0n;
     swapGo.textContent = wallet ? "Swap" : "Connect a wallet to swap";
-  } else {
-    swapOut.value = "";
   }
-  for (const [k, v] of rows) {
-    const dt = document.createElement("dt");
-    dt.textContent = k;
-    const dd = document.createElement("dd");
-    dd.textContent = v;
-    dl.append(dt, dd);
-  }
+  dl(dlEl, rows);
 }
 
 swapIn.oninput = renderQuote;
 $<HTMLInputElement>("slippage").oninput = renderQuote;
 $<HTMLButtonElement>("swap-flip").onclick = () => {
-  direction = direction === "erg-to-token" ? "token-to-erg" : "erg-to-token";
+  [fromId, toId] = [toId, fromId];
   swapIn.value = "";
   renderSwapSelectors();
   renderQuote();
+  void renderBalance();
 };
 swapGo.onclick = async () => {
   try {
-    const p = selectedPool();
-    if (!p) throw new Error("pick a token");
-    const inDec = direction === "erg-to-token" ? ERG_DECIMALS : p.tokenDecimals;
-    const amountIn = parseUnits(swapIn.value, inDec);
-    const fresh = await explorer.poolByNft(p.box.assets[0].tokenId); // the pool as it stands now, not as it was listed
-    const minOut = (() => {
-      const q = quote(describePool(fresh.box), direction, amountIn);
-      return q - (q * slippageBps()) / 10_000n;
-    })();
-    await send((height, inputs) => buildSwap({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, direction, amountIn, minOut }));
+    const r = route();
+    if (r.kind === "none") throw new Error(r.why);
+    const amountIn = parseUnits(swapIn.value, decimalsOf(fromId));
+    const bps = slippageBps();
+    if (r.kind === "n2t") {
+      const fresh = await explorer.poolByNft(r.entry.box.assets[0].tokenId); // the pool as it stands now
+      const q = quote(describePool(fresh.box), r.direction, amountIn);
+      const minOut = q - (q * bps) / 10_000n;
+      await send((height, inputs) => buildSwap({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, direction: r.direction, amountIn, minOut }));
+    } else {
+      const fresh = await explorer.t2tPoolByNft(r.entry.box.assets[0].tokenId);
+      const q = quoteT2T(describeT2TPool(fresh.box), fromId, amountIn);
+      const minOut = q - (q * bps) / 10_000n;
+      await send((height, inputs) => buildSwapT2T({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, inId: fromId, amountIn, minOut }));
+    }
     swapIn.value = "";
     setTimeout(() => {
       void loadPools();
@@ -275,12 +335,19 @@ swapGo.onclick = async () => {
 
 async function loadPools() {
   try {
-    pools = (await explorer.pools(500)).sort((a, b) => (b.box.value > a.box.value ? 1 : -1));
-    if (!selectedToken) selectedToken = tokenlist.tokens.find((t) => t.name === "SigUSD")?.id ?? tokenlist.tokens[0]?.id ?? "";
+    [pools, t2tPools] = await Promise.all([explorer.pools(500), explorer.t2tPools(500)]);
+    pools.sort((a, b) => (b.box.value > a.box.value ? 1 : -1));
+    for (const p of pools) rememberToken(p.box.assets[2].tokenId, p.tokenName, p.tokenDecimals);
+    for (const e of t2tPools) {
+      rememberToken(e.box.assets[2].tokenId, e.xName, e.xDecimals);
+      rememberToken(e.box.assets[3].tokenId, e.yName, e.yDecimals);
+    }
+    if (!toId) toId = tokenlist.tokens.find((t) => t.name === "SigUSD")?.id ?? tokenlist.tokens[0]?.id ?? "";
     renderSwapSelectors();
     renderQuote();
     renderTokenPick();
-    log(`${pools.length} pools listed by the explorer; ${tokenlist.tokens.length} tokens in the static list (${tokenlist.generated})`);
+    renderPairSelect();
+    log(`${pools.length} ERG pools and ${t2tPools.length} token-to-token pools listed by the explorer; ${tokenlist.tokens.length} tokens in the static list (${tokenlist.generated})`);
   } catch (e) {
     log(`could not load pools: ${err(e)}`);
   }
@@ -288,11 +355,9 @@ async function loadPools() {
 
 // ---- pool (liquidity) --------------------------------------------------------------------------
 
-let lpToken = "";
-
-function lpPool(): PoolEntry | undefined {
-  return lpToken ? deepestPool(lpToken) : undefined;
-}
+type Pair = { kind: "n2t"; tokenId: string } | { kind: "t2t"; nft: string };
+let pair: Pair | undefined;
+let lpSideTyped: "a" | "b" = "a";
 
 function dl(el: HTMLDListElement, rows: [string, string][]) {
   el.replaceChildren();
@@ -305,35 +370,75 @@ function dl(el: HTMLDListElement, rows: [string, string][]) {
   }
 }
 
+const whitelisted = (id: string) => tokenlist.tokens.some((t) => t.id === id);
+
+/** Pairs: ERG with each whitelisted token, then token-to-token pools whose two tokens are both whitelisted. */
+function renderPairSelect() {
+  const sel = $<HTMLSelectElement>("lp-token");
+  const current = sel.value;
+  sel.replaceChildren();
+  for (const t of tokenlist.tokens) sel.append(new Option(`ERG / ${t.name || t.id.slice(0, 8)}`, `n2t:${t.id}`));
+  for (const e of t2tPools) {
+    const x = e.box.assets[2].tokenId, y = e.box.assets[3].tokenId;
+    if (whitelisted(x) && whitelisted(y)) sel.append(new Option(`${nameOf(x)} / ${nameOf(y)}`, `t2t:${e.box.assets[0].tokenId}`));
+  }
+  if (current) sel.value = current;
+  sel.onchange = () => {
+    const [kind, id] = sel.value.split(":");
+    pair = kind === "n2t" ? { kind: "n2t", tokenId: id } : { kind: "t2t", nft: id };
+    $<HTMLInputElement>("lp-erg").value = "";
+    $<HTMLInputElement>("lp-tok").value = "";
+    void renderPool();
+  };
+}
+
+/** The two sides of the selected pair: [a, b] asset ids, and the live pool. */
+function pairSides(): { a: string; b: string; n2t?: PoolEntry; t2t?: T2TPoolEntry } | undefined {
+  if (!pair) return undefined;
+  if (pair.kind === "n2t") {
+    const n2t = deepestPool(pair.tokenId);
+    return n2t ? { a: ERG, b: pair.tokenId, n2t } : undefined;
+  }
+  const nft = pair.nft;
+  const t2t = t2tPools.find((e) => e.box.assets[0].tokenId === nft);
+  return t2t ? { a: t2t.box.assets[2].tokenId, b: t2t.box.assets[3].tokenId, t2t } : undefined;
+}
+
 async function renderPool() {
   const sel = $<HTMLSelectElement>("lp-token");
-  if (!sel.options.length) {
-    for (const t of tokenlist.tokens) sel.append(new Option(t.name || t.id.slice(0, 8), t.id));
-    sel.onchange = () => {
-      lpToken = sel.value;
-      void renderPool();
-    };
+  if (!pair) {
+    if (!sel.value) return;
+    const [kind, id] = sel.value.split(":");
+    pair = kind === "n2t" ? { kind: "n2t", tokenId: id } : { kind: "t2t", nft: id };
   }
-  if (!lpToken) lpToken = selectedToken || sel.value;
-  sel.value = lpToken;
-  const p = lpPool();
-  if (!p) {
-    dl($("lp-info"), [["Pool", "no pool listed for this token yet (the explorer is still loading, or the token has none)"]]);
+  const ps = pairSides();
+  if (!ps) {
+    dl($("lp-info"), [["Pool", "no pool listed for this pair yet (the explorer is still loading, or the pair has none)"]]);
     return;
   }
-  const pool = describePool(p.box);
-  const name = p.tokenName || pool.tokenId.slice(0, 8);
-  $("lp-tok-name").textContent = name;
-  const rows: [string, string][] = [
-    ["Reserves", `${formatUnits(pool.x, ERG_DECIMALS, 3)} ERG and ${formatUnits(pool.y, p.tokenDecimals)} ${name}`],
-    ["LP in circulation", lpSupply(pool).toString()],
-    ["Pool fee", `${formatUnits(1000n - pool.feeNum, 1)}% to liquidity providers`],
-  ];
+  $("lp-erg-name").textContent = nameOf(ps.a);
+  $("lp-tok-name").textContent = nameOf(ps.b);
+  const rows: [string, string][] = [];
+  let lpTokenId: string, feeNum: bigint, supply: bigint;
+  let share: (lp: bigint) => [bigint, bigint];
+  if (ps.n2t) {
+    const pool = describePool(ps.n2t.box);
+    lpTokenId = pool.lpTokenId; feeNum = pool.feeNum; supply = lpSupply(pool);
+    rows.push(["Reserves", `${formatUnits(pool.x, ERG_DECIMALS, 3)} ERG and ${formatUnits(pool.y, decimalsOf(ps.b))} ${nameOf(ps.b)}`]);
+    share = (lp) => { const q = redeemQuote(pool, lp); return [q.ergOut, q.tokenOut]; };
+  } else {
+    const pool = describeT2TPool(ps.t2t!.box);
+    lpTokenId = pool.lpTokenId; feeNum = pool.feeNum; supply = lpSupplyT2T(pool);
+    rows.push(["Reserves", `${formatUnits(pool.x, decimalsOf(ps.a))} ${nameOf(ps.a)} and ${formatUnits(pool.y, decimalsOf(ps.b))} ${nameOf(ps.b)}`]);
+    share = (lp) => { const q = redeemQuoteT2T(pool, lp); return [q.xOut, q.yOut]; };
+  }
+  rows.push(["LP in circulation", supply.toString()]);
+  rows.push(["Pool fee", `${formatUnits(1000n - feeNum, 1)}% to liquidity providers`]);
   if (wallet) {
     try {
-      const lp = BigInt(await wallet.api.get_balance(pool.lpTokenId));
-      const share = redeemQuote(pool, lp);
-      rows.push(["Your LP tokens", `${lp} (${formatUnits(share.ergOut, ERG_DECIMALS, 4)} ERG and ${formatUnits(share.tokenOut, p.tokenDecimals)} ${name})`]);
+      const lp = BigInt(await wallet.api.get_balance(lpTokenId));
+      const [sa, sb] = share(lp);
+      rows.push(["Your LP tokens", `${lp} (${formatUnits(sa, decimalsOf(ps.a), 4)} ${nameOf(ps.a)} and ${formatUnits(sb, decimalsOf(ps.b))} ${nameOf(ps.b)})`]);
       $<HTMLButtonElement>("lp-max").onclick = () => {
         $<HTMLInputElement>("lp-in").value = lp.toString();
         renderRedeemQuote();
@@ -347,40 +452,64 @@ async function renderPool() {
   renderRedeemQuote();
 }
 
+/** Returns [aIn, bIn, lpOut] for the typed side, deriving the other at the pool's ratio. */
+function depositAmounts(ps: NonNullable<ReturnType<typeof pairSides>>, typedText: string): [bigint, bigint, bigint] {
+  if (ps.n2t) {
+    const pool = describePool(ps.n2t.box);
+    if (lpSideTyped === "a") {
+      const ergIn = parseUnits(typedText, ERG_DECIMALS);
+      const q = depositQuote(pool, ergIn);
+      return [ergIn, q.tokenIn, q.lpOut];
+    }
+    const tokenIn = parseUnits(typedText, decimalsOf(ps.b));
+    const q = depositQuoteFromTokens(pool, tokenIn);
+    return [q.ergIn, tokenIn, q.lpOut];
+  }
+  const pool = describeT2TPool(ps.t2t!.box);
+  if (lpSideTyped === "a") {
+    const xIn = parseUnits(typedText, decimalsOf(ps.a));
+    const q = depositQuoteT2T(pool, xIn);
+    return [xIn, q.yIn, q.lpOut];
+  }
+  const yIn = parseUnits(typedText, decimalsOf(ps.b));
+  const q = depositQuoteT2TFromY(pool, yIn);
+  return [q.xIn, yIn, q.lpOut];
+}
+
 function renderDepositQuote() {
-  const p = lpPool();
   const btn = $<HTMLButtonElement>("lp-add");
   btn.disabled = true;
-  if (!p) return;
-  const pool = describePool(p.box);
+  const ps = pairSides();
+  if (!ps) return;
+  const aEl = $<HTMLInputElement>("lp-erg");
+  const bEl = $<HTMLInputElement>("lp-tok");
   try {
-    const text = $<HTMLInputElement>("lp-erg").value.trim();
-    if (!text) {
-      $<HTMLInputElement>("lp-tok").value = "";
+    const typed = (lpSideTyped === "a" ? aEl : bEl).value.trim();
+    if (!typed) {
+      (lpSideTyped === "a" ? bEl : aEl).value = "";
       dl($("lp-quote"), []);
       return;
     }
-    const ergIn = parseUnits(text, ERG_DECIMALS);
-    const q = depositQuote(pool, ergIn);
-    $<HTMLInputElement>("lp-tok").value = formatUnits(q.tokenIn, p.tokenDecimals);
-    const supply = lpSupply(pool) + q.lpOut;
+    const [aIn, bIn, lpOut] = depositAmounts(ps, typed);
+    if (lpSideTyped === "a") bEl.value = formatUnits(bIn, decimalsOf(ps.b));
+    else aEl.value = formatUnits(aIn, decimalsOf(ps.a));
+    const supply = (ps.n2t ? lpSupply(describePool(ps.n2t.box)) : lpSupplyT2T(describeT2TPool(ps.t2t!.box))) + lpOut;
     dl($("lp-quote"), [
-      ["LP tokens you receive", q.lpOut.toString()],
-      ["Your share after", `${formatUnits((q.lpOut * 1_000_000n) / supply, 4)}%`],
+      ["LP tokens you receive", lpOut.toString()],
+      ["Your share after", `${formatUnits((lpOut * 1_000_000n) / supply, 4)}%`],
       ["Miner fee", `${formatUnits(FEE, ERG_DECIMALS)} ERG`],
     ]);
-    btn.disabled = !wallet || q.lpOut <= 0n;
+    btn.disabled = !wallet || lpOut <= 0n;
   } catch (e) {
     dl($("lp-quote"), [["Amount", err(e)]]);
   }
 }
 
 function renderRedeemQuote() {
-  const p = lpPool();
   const btn = $<HTMLButtonElement>("lp-remove");
   btn.disabled = true;
-  if (!p) return;
-  const pool = describePool(p.box);
+  const ps = pairSides();
+  if (!ps) return;
   try {
     const text = $<HTMLInputElement>("lp-in").value.trim();
     if (!text) {
@@ -388,27 +517,44 @@ function renderRedeemQuote() {
       return;
     }
     const lpIn = parseUnits(text, 0);
-    const q = redeemQuote(pool, lpIn);
+    const [a, b] = ps.n2t
+      ? (() => { const q = redeemQuote(describePool(ps.n2t!.box), lpIn); return [q.ergOut, q.tokenOut]; })()
+      : (() => { const q = redeemQuoteT2T(describeT2TPool(ps.t2t!.box), lpIn); return [q.xOut, q.yOut]; })();
     dl($("lp-redeem-quote"), [
-      ["You receive", `${formatUnits(q.ergOut, ERG_DECIMALS)} ERG and ${formatUnits(q.tokenOut, p.tokenDecimals)} ${p.tokenName || "tokens"}`],
+      ["You receive", `${formatUnits(a, decimalsOf(ps.a))} ${nameOf(ps.a)} and ${formatUnits(b, decimalsOf(ps.b))} ${nameOf(ps.b)}`],
       ["Miner fee", `${formatUnits(FEE, ERG_DECIMALS)} ERG`],
     ]);
-    btn.disabled = !wallet || (q.ergOut <= 0n && q.tokenOut <= 0n);
+    btn.disabled = !wallet || (a <= 0n && b <= 0n);
   } catch (e) {
     dl($("lp-redeem-quote"), [["Amount", err(e)]]);
   }
 }
 
-$<HTMLInputElement>("lp-erg").oninput = renderDepositQuote;
+$<HTMLInputElement>("lp-erg").oninput = () => {
+  lpSideTyped = "a";
+  renderDepositQuote();
+};
+$<HTMLInputElement>("lp-tok").oninput = () => {
+  lpSideTyped = "b";
+  renderDepositQuote();
+};
 $<HTMLInputElement>("lp-in").oninput = renderRedeemQuote;
 $<HTMLButtonElement>("lp-add").onclick = async () => {
   try {
-    const p = lpPool();
-    if (!p) throw new Error("pick a pool");
-    const ergIn = parseUnits($<HTMLInputElement>("lp-erg").value, ERG_DECIMALS);
-    const fresh = await explorer.poolByNft(p.box.assets[0].tokenId);
-    await send((height, inputs) => buildDeposit({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, ergIn }));
+    const ps = pairSides();
+    if (!ps) throw new Error("pick a pair");
+    const typed = (lpSideTyped === "a" ? $<HTMLInputElement>("lp-erg") : $<HTMLInputElement>("lp-tok")).value;
+    if (ps.n2t) {
+      const fresh = await explorer.poolByNft(ps.n2t.box.assets[0].tokenId);
+      const [ergIn] = depositAmounts({ ...ps, n2t: fresh }, typed);
+      await send((height, inputs) => buildDeposit({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, ergIn }));
+    } else {
+      const fresh = await explorer.t2tPoolByNft(ps.t2t!.box.assets[0].tokenId);
+      const [xIn] = depositAmounts({ ...ps, t2t: fresh }, typed);
+      await send((height, inputs) => buildDepositT2T({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, xIn }));
+    }
     $<HTMLInputElement>("lp-erg").value = "";
+    $<HTMLInputElement>("lp-tok").value = "";
     setTimeout(() => void loadPools().then(renderPool), 3000);
   } catch (e) {
     log(`add liquidity failed: ${err(e)}`);
@@ -416,11 +562,16 @@ $<HTMLButtonElement>("lp-add").onclick = async () => {
 };
 $<HTMLButtonElement>("lp-remove").onclick = async () => {
   try {
-    const p = lpPool();
-    if (!p) throw new Error("pick a pool");
+    const ps = pairSides();
+    if (!ps) throw new Error("pick a pair");
     const lpIn = parseUnits($<HTMLInputElement>("lp-in").value, 0);
-    const fresh = await explorer.poolByNft(p.box.assets[0].tokenId);
-    await send((height, inputs) => buildRedeem({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, lpIn }));
+    if (ps.n2t) {
+      const fresh = await explorer.poolByNft(ps.n2t.box.assets[0].tokenId);
+      await send((height, inputs) => buildRedeem({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, lpIn }));
+    } else {
+      const fresh = await explorer.t2tPoolByNft(ps.t2t!.box.assets[0].tokenId);
+      await send((height, inputs) => buildRedeemT2T({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, lpIn }));
+    }
     $<HTMLInputElement>("lp-in").value = "";
     setTimeout(() => void loadPools().then(renderPool), 3000);
   } catch (e) {

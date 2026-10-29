@@ -30,6 +30,17 @@ export interface PoolEntry {
   tokenDecimals: number;
 }
 
+export interface T2TPoolEntry {
+  box: Box<bigint>;
+  xName: string;
+  xDecimals: number;
+  yName: string;
+  yDecimals: number;
+}
+
+/** SHA-256 of the ErgoDEX v1 T2T pool template (scripts/t2t-pools.ts, 2026-10-29). */
+export const T2T_POOL_TEMPLATE_SHA256 = "3c09deff3b5f49329149d18e02aab675ef6957bf6559a5c7dba817fee883fb3e";
+
 /** SHA-256 of the ErgoDEX v1 N2T pool template (scripts/pools.ts, 2026-10-29). */
 export const POOL_TEMPLATE_SHA256 = "2dcc7830afe8f355b945850c60ff2b41fdb3e8ade07fde0a7c8a3ec498e8c3f6";
 
@@ -83,6 +94,22 @@ export class Explorer {
     return { box: toFleetBox(b), tokenName: b.assets[2].name ?? "", tokenDecimals: b.assets[2].decimals ?? 0 };
   }
 
+  /** Every token-to-token pool box (NFT, LP token, token X, token Y). */
+  async t2tPools(limit = 500): Promise<T2TPoolEntry[]> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/search?limit=${limit}`, {
+      method: "POST",
+      body: JSON.stringify({ ergoTreeTemplateHash: T2T_POOL_TEMPLATE_SHA256 }),
+    });
+    return r.items.filter((b) => b.assets.length === 4).map(t2tEntry);
+  }
+
+  async t2tPoolByNft(nft: string): Promise<T2TPoolEntry> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byTokenId/${nft}?limit=5`);
+    const b = r.items.find((x) => x.assets.length === 4 && x.assets[0].tokenId === nft);
+    if (!b) throw new Error("pool box not found");
+    return t2tEntry(b);
+  }
+
   txUrl(txId: string): string {
     const host = this.base.replace(/^https?:\/\/api\./, "https://");
     return `${host}/en/transactions/${txId}`;
@@ -113,6 +140,10 @@ export function parseExact(text: string): unknown {
     }
     return value;
   } as (this: unknown, key: string, value: unknown) => unknown);
+}
+
+function t2tEntry(b: ExplorerBox): T2TPoolEntry {
+  return { box: toFleetBox(b), xName: b.assets[2].name ?? "", xDecimals: b.assets[2].decimals ?? 0, yName: b.assets[3].name ?? "", yDecimals: b.assets[3].decimals ?? 0 };
 }
 
 export function toFleetBox(b: ExplorerBox): Box<bigint> {
