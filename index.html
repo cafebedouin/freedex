@@ -5,43 +5,85 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>FreeDEX for Ergo</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-    body { margin: 0 auto; max-width: 64rem; padding: 1rem; line-height: 1.4; }
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; --line: #8884; --panel: #8881; }
+    body { margin: 0 auto; max-width: 64rem; padding: 1rem; line-height: 1.45; }
     header { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; }
     h1 { font-size: 1.25rem; margin: 0; }
-    section { margin-top: 1.5rem; }
+    h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
+    nav { display: flex; gap: .5rem; margin: 1rem 0; border-bottom: 1px solid var(--line); }
+    nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: .4rem .8rem; font: inherit; cursor: pointer; }
+    nav button[aria-selected="true"] { border-bottom-color: currentColor; font-weight: 600; }
+    section[hidden] { display: none; }
+    .panel { background: var(--panel); border-radius: .5rem; padding: 1rem; max-width: 30rem; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; margin: .5rem 0; }
+    .row input[type=text] { font-size: 1.25rem; padding: .4rem; width: 100%; box-sizing: border-box; }
+    .row select { max-width: 14rem; padding: .4rem; }
+    dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem .75rem; margin: .75rem 0; font-size: .9rem; }
+    dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
     table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #8884; vertical-align: top; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
     td.num { text-align: right; font-variant-numeric: tabular-nums; }
     code { font-size: .85em; }
-    form { display: grid; grid-template-columns: max-content 1fr; gap: .5rem .75rem; align-items: center; max-width: 36rem; }
-    form button { grid-column: 2; justify-self: start; }
-    button { padding: .35rem .8rem; }
-    #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: .85rem; background: #8881; padding: .5rem; min-height: 2rem; }
+    form.grid { display: grid; grid-template-columns: max-content 1fr; gap: .5rem .75rem; align-items: center; max-width: 36rem; }
+    form.grid button { grid-column: 2; justify-self: start; }
+    button.primary { width: 100%; padding: .6rem; font-size: 1rem; }
+    button { padding: .35rem .8rem; font: inherit; }
+    #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: .85rem; background: var(--panel); padding: .5rem; min-height: 2rem; }
     .mine { font-weight: 600; }
     .muted { opacity: .7; }
+    .small { font-size: .85rem; }
+    details { margin: .5rem 0; border: 1px solid var(--line); border-radius: .4rem; padding: .3rem .6rem; }
+    summary { cursor: pointer; font-weight: 600; }
+    summary .muted { font-weight: 400; }
+    h3 { font-size: .95rem; margin: .6rem 0 .2rem; }
   </style>
 </head>
 <body>
   <header>
-    <h1>FreeDEX <span class="muted">for Ergo: Machina limit orders, self-hosted, no server</span></h1>
+    <h1>FreeDEX <span class="muted">for Ergo</span></h1>
     <div id="wallet"></div>
   </header>
+  <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
 
-  <section>
-    <h2>Open orders</h2>
-    <p class="muted">Every unspent E2T limit order on mainnet, read from the explorer by template hash. Prices are nanoERG per smallest token unit; amounts are shown with the token's decimals.</p>
-    <div id="orders">loading…</div>
+  <nav role="tablist">
+    <button role="tab" data-tab="swap" aria-selected="true">Swap</button>
+    <button role="tab" data-tab="orders" aria-selected="false">Limit orders</button>
+    <button role="tab" data-tab="pool" aria-selected="false">Pool</button>
+  </nav>
+
+  <section id="tab-swap">
+    <div class="panel">
+      <div class="row">
+        <input type="text" id="swap-in" inputmode="decimal" placeholder="0.0" autocomplete="off" />
+        <select id="swap-from"><option value="ERG">ERG</option></select>
+      </div>
+      <div class="small muted" id="swap-balance"></div>
+      <div style="text-align:center"><button id="swap-flip" title="flip direction">⇅</button></div>
+      <div class="row">
+        <input type="text" id="swap-out" placeholder="0.0" readonly />
+        <select id="swap-to"></select>
+      </div>
+      <div class="row small" id="swap-other-row" hidden>
+        <input type="text" id="swap-other" placeholder="token id (64 hex) for any token with an ErgoDEX pool" size="64" />
+        <button id="swap-other-go">use</button>
+      </div>
+      <dl id="swap-quote"></dl>
+      <div class="row small"><label for="slippage">Slippage tolerance (%)</label><input id="slippage" type="text" inputmode="decimal" value="1" size="4" /></div>
+      <button class="primary" id="swap-go" disabled>Swap</button>
+      <p class="muted small" id="swap-note">Pools: ErgoDEX v1 ERG-to-token pools on mainnet, read from the explorer. The trade goes straight to the pool in one transaction; there is no order box, no executor and no interface fee.</p>
+    </div>
   </section>
 
-  <section>
-    <h2>Create an order</h2>
-    <form id="create">
+  <section id="tab-orders" hidden>
+    <h2>Place a limit order</h2>
+    <form id="create" class="grid">
       <label for="side">You</label>
       <select id="side" name="side">
         <option value="sell-tokens">sell tokens for ERG</option>
         <option value="buy-tokens">buy tokens with ERG</option>
       </select>
+      <label for="token-pick">Token</label>
+      <select id="token-pick"><option value="">other (type the id below)</option></select>
       <label for="token">Token id</label>
       <input id="token" name="token" size="64" pattern="[0-9a-fA-F]{64}" required />
       <label for="amount" id="amount-label">Token amount</label>
@@ -50,10 +92,31 @@
       <input id="price" name="price" inputmode="decimal" required />
       <button type="submit">Build, sign in wallet, submit</button>
     </form>
+
+    <h2 style="margin-top:1.5rem">Open limit orders</h2>
+    <p class="muted small">Every unspent Machina ERG-to-token limit order on mainnet, grouped by token, best price first on each side. Prices in ERG per whole token.</p>
+    <div id="orders">loading…</div>
+  </section>
+
+  <section id="tab-pool" hidden>
+    <div class="panel">
+      <h2>Add liquidity</h2>
+      <div class="row"><select id="lp-token"></select><span class="small muted">pool</span></div>
+      <dl id="lp-info"></dl>
+      <div class="row"><input type="text" id="lp-erg" inputmode="decimal" placeholder="ERG to add" autocomplete="off" /><span>ERG</span></div>
+      <div class="row"><input type="text" id="lp-tok" placeholder="tokens, at the pool's ratio" readonly /><span id="lp-tok-name">tokens</span></div>
+      <dl id="lp-quote"></dl>
+      <button class="primary" id="lp-add" disabled>Add liquidity</button>
+      <h2 style="margin-top:1.25rem">Remove liquidity</h2>
+      <div class="row"><input type="text" id="lp-in" inputmode="decimal" placeholder="LP tokens to redeem" autocomplete="off" /><button id="lp-max">max</button></div>
+      <dl id="lp-redeem-quote"></dl>
+      <button class="primary" id="lp-remove" disabled>Remove liquidity</button>
+      <p class="muted small">Deposits and redemptions go straight to the pool box in one transaction at the pool's own rule (Pool.sc: a deposit earns at most min(ΔERG, Δtoken) of the supply, pro rata; a redemption returns your share). LP tokens are plain tokens in your wallet. Miner fee 0.001 ERG, nothing else.</p>
+    </div>
   </section>
 
   <section>
-    <h2>Log</h2>
+    <h2 style="margin-top:1.5rem">Log</h2>
     <div id="log"></div>
   </section>
 

@@ -7,8 +7,20 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["@nautilus-js/eip12-types", "vite/client"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": [
+      "@nautilus-js/eip12-types",
+      "vite/client"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true
   },
-  "include": ["src", "test"]
+  "include": [
+    "src",
+    "test"
+  ]
 }

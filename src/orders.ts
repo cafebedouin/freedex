@@ -1,10 +1,11 @@
 // Pure transaction builders for Machina E2T limit orders. No DOM, no wallet, no network: testable on a mock chain.
 import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
-import { ErgoAddress, RECOMMENDED_MIN_FEE_VALUE, TransactionBuilder, type R4ToR6Registers } from "@fleet-sdk/core";
+import { ErgoAddress, TransactionBuilder, type R4ToR6Registers } from "@fleet-sdk/core";
 import { SConstant } from "@fleet-sdk/serializer";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 
-export const FEE = RECOMMENDED_MIN_FEE_VALUE;
+/** The miner fee: the node's default minimum (0.001 ERG), the only fee the page adds to any transaction. */
+export const FEE = 1_000_000n;
 
 export type OrderBox = Box<Amount, R4ToR6Registers>;
 

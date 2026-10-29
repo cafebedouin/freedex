@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ErgoAddress } from "@fleet-sdk/core";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { buildClose, buildCreate, buildFill, capacity, describe as view, takerAction } from "../src/orders";
+import { FEE } from "../src/orders";
 
 const TOKEN = "03faf2cb329f2e90d6d23b58d91bbb6c046aa143261cc21f52fbe2824bfcbf04"; // SigUSD id, any 64-hex works
 const ERG = 1_000_000_000n;
@@ -64,7 +65,7 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     expect(contract.utxos.length).toBe(0);
     expect(taker.balance.tokens).toEqual([{ tokenId: TOKEN, amount: 100n }]);
     // the owner got the ERG: 100 tokens at 0.005 ERG, plus the min box value back
-    expect(owner.balance.nanoergs).toBe(2n * ERG - 1_100_000n + 100n * 5_000_000n);
+    expect(owner.balance.nanoergs).toBe(2n * ERG - FEE + 100n * 5_000_000n);
   });
 
   it("owner buys tokens: create, taker sells into it, owner closes the rest", () => {
@@ -90,7 +91,7 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     expect(contract.utxos.length).toBe(1);
     expect(view(contract.utxos.at(0)).tokenAmount).toBe(30n);
     expect(view(contract.utxos.at(0)).value).toBe(1n * ERG - 30n * 10_000_000n);
-    expect(taker.balance.nanoergs).toBe(1n * ERG - 1_100_000n + 30n * 10_000_000n);
+    expect(taker.balance.nanoergs).toBe(1n * ERG - FEE + 30n * 10_000_000n);
 
     const close = buildClose({
       height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,

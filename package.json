@@ -2,13 +2,14 @@
   "name": "freedex",
   "private": true,
   "type": "module",
-  "description": "FreeDEX for Ergo: a self-hosted static page for Machina limit orders, built with Fleet in the browser, signed by your wallet",
+  "description": "FreeDEX for Ergo: a self-hosted static DEX page (ErgoDEX v1 pool swaps and Machina limit orders), built with Fleet in the browser, signed by your wallet",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "tokens": "node scripts/tokens.ts > src/tokenlist.json"
   },
   "dependencies": {
     "@fleet-sdk/common": "0.10.0",

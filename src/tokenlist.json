@@ -1,0 +1,391 @@
+{
+ "generated": "2026-10-29",
+ "minPoolErg": "100000000000",
+ "tokens": [
+  {
+   "id": "8b08cdd5449a9592a9e79711d7d79249d7a03c535d17efaee83e216e80a44c4b",
+   "name": "RSN",
+   "decimals": 3,
+   "poolNft": "cadac6db847a715e3577d8f2fbb2edfb2280f20924abf51bf83704a9ddc511b2",
+   "poolErg": "240345795702362"
+  },
+  {
+   "id": "03faf2cb329f2e90d6d23b58d91bbb6c046aa143261cc21f52fbe2824bfcbf04",
+   "name": "SigUSD",
+   "decimals": 2,
+   "poolNft": "9916d75132593c8b07fe18bd8d583bda1652eed7565cf41a4738ddd90fc992ec",
+   "poolErg": "115316663493708"
+  },
+  {
+   "id": "7a51950e5f548549ec1aa63ffdc38279505b11e7e803d01bcf8347e0123c88b0",
+   "name": "rsBTC",
+   "decimals": 8,
+   "poolNft": "47a811c68e49f6bfa6629602037ee65f8d175ddbc7b64bdb65ad40599b812fd0",
+   "poolErg": "44105239700423"
+  },
+  {
+   "id": "581d7df25808881b2b8b9b4e03e2f637c46a94f74a69a5da36434125bacb4e08",
+   "name": "rsFIRO",
+   "decimals": 8,
+   "poolNft": "d86f6508c6b665bf4ba0bd3b56f7090404665b0cef26e5202d91127ed538f47c",
+   "poolErg": "28070240324516"
+  },
+  {
+   "id": "d4f0192622b440afc09711aa0545eacd04d78ad3f8a063523f451e10d3d0e6ef",
+   "name": "MEOW",
+   "decimals": 2,
+   "poolNft": "2ade821e3b7e8ea1806f72a239eb4e123891cf486c51191f1b803e32ca4df497",
+   "poolErg": "22807653686138"
+  },
+  {
+   "id": "089990451bb430f05a85f4ef3bcb6ebf852b3d6ee68d86d78658b9ccef20074f",
+   "name": "QUACKS",
+   "decimals": 6,
+   "poolNft": "46463b61bae37a3f2f0963798d57279167d82e17f78ccd0ccedec7e49cbdbbd1",
+   "poolErg": "16418701562614"
+  },
+  {
+   "id": "1fd6e032e8476c4aa54c18c1a308dce83940e8f4a28f576440513ed7326ad489",
+   "name": "Paideia",
+   "decimals": 4,
+   "poolNft": "666be5df835a48b99c40a395a8aa3ea6ce39ede2cd77c02921d629b9baad8200",
+   "poolErg": "15569503694878"
+  },
+  {
+   "id": "003bd19d0187117f130b62e1bcab0939929ff5c7709f843c5c4dd158949285d0",
+   "name": "SigRSV",
+   "decimals": 0,
+   "poolNft": "1d5afc59838920bb5ef2a8f9d63825a55b1d48e269d7cecee335d637c3ff5f3f",
+   "poolErg": "15516949124311"
+  },
+  {
+   "id": "59ee24951ce668f0ed32bdb2e2e5731b6c36128748a3b23c28407c5f8ccbf0f6",
+   "name": "WALRUS",
+   "decimals": 0,
+   "poolNft": "576e9ccb7ee27341b097767a0cf3439c36747cf3226de9a88f314e878f893714",
+   "poolErg": "13338388491640"
+  },
+  {
+   "id": "007fd64d1ee54d78dd269c8930a38286caa28d3f29d27cadcb796418ab15c283",
+   "name": "EXLE",
+   "decimals": 4,
+   "poolNft": "a62a1603bae6c0d293f7b954672de6fa8eae9793d433cb02ee49dce736da54ac",
+   "poolErg": "12118342082944"
+  },
+  {
+   "id": "91289d5cefb9d78e3ea248d4e9c5b0e3c3de54f64bfae85c0070580961995262",
+   "name": "PEPERG",
+   "decimals": 0,
+   "poolNft": "9f3e7d43dd9b32f4e493053756e3e29af352614ac9871cb43ac7e548a03b7da0",
+   "poolErg": "7671846871033"
+  },
+  {
+   "id": "6fd53a3b6baa760a91af9f5ceb4200e9d3c23548b2df89333adede65a272c893",
+   "name": "heisenbERG",
+   "decimals": 5,
+   "poolNft": "77c9b3d32fddd770351a206ae28cd5241b4e21953998a40bd671e8d027f2883a",
+   "poolErg": "7391060811792"
+  },
+  {
+   "id": "01dce8a5632d19799950ff90bca3b5d0ca3ebfa8aaafd06f0cc6dd1e97150e7f",
+   "name": "CYPX",
+   "decimals": 4,
+   "poolNft": "7273ad23440f63c64beaa5950434e412bbfa59e8815f07aea7b11e47938119aa",
+   "poolErg": "7333864843744"
+  },
+  {
+   "id": "9a06d9e545a41fd51eeffc5e20d818073bf820c635e2a9d922269913e0de369d",
+   "name": "SPF",
+   "decimals": 6,
+   "poolNft": "f40afb6f877c40a30c8637dd5362227285738174151ce66d6684bc1b727ab6cf",
+   "poolErg": "7266250116487"
+  },
+  {
+   "id": "e023c5f382b6e96fbd878f6811aac73345489032157ad5affb84aefd4956c297",
+   "name": "rsADA",
+   "decimals": 6,
+   "poolNft": "ae97c5eccd59a065cd973a8d6afb8bb79f9cc70368a7dcdf73aaeab1cedf6f6b",
+   "poolErg": "6756145327698"
+  },
+  {
+   "id": "a399dcd79a68eea82df4e9b30a11c61a96a671e767924c0cef2148fec9270df6",
+   "name": "BURN",
+   "decimals": 0,
+   "poolNft": "b98a03dcfc2094fe83fecafc9b1a4a6064c177f5e63ffadbb9621c32f7dd78a0",
+   "poolErg": "6438196853861"
+  },
+  {
+   "id": "85763f3893ddd8f7f820473ed0dcc3c40aa8398ec6075a8990f250b9d270e9b3",
+   "name": "CLB USE",
+   "decimals": 9,
+   "poolNft": "4e3ca1a35b3eb40927b221c9c2b8fa8f66a5e4b9577acab334a9168db4ed2681",
+   "poolErg": "6306568743349"
+  },
+  {
+   "id": "f0cac602d618081f46db086726d3c4da53006b646b50e382989054dcf3c93bd8",
+   "name": "FAKU",
+   "decimals": 2,
+   "poolNft": "19ffcea554912ff555b1427b3c0a390ed54a2d11cff5b599a92234697508373a",
+   "poolErg": "4464002149753"
+  },
+  {
+   "id": "d1d2ae2ac0456aa43550dd4fda45e4f866d523be9170d3a3e4cab43a83926334",
+   "name": "GreasyCex",
+   "decimals": 0,
+   "poolNft": "68ed2d3b33624409830d877c6e6d431615862eabdcd660ddf30eee1972f1f858",
+   "poolErg": "3935973388260"
+  },
+  {
+   "id": "00b1e236b60b95c2c6f8007a9d89bc460fc9e78f98b09faec9449007b40bccf3",
+   "name": "EGIO",
+   "decimals": 4,
+   "poolNft": "9c1d78e53e7812df96bbb09b757ee1e059c5a298d85789b5c82a7222c34e8f61",
+   "poolErg": "2964232244825"
+  },
+  {
+   "id": "fcfca7654fb0da57ecf9a3f489bcbeb1d43b56dce7e73b352f7bc6f2561d2a1b",
+   "name": "ErgOne",
+   "decimals": 8,
+   "poolNft": "94e7c5993db6bf42ec4473379f12194edab6eb0e858b3c256efd69fd786ef72a",
+   "poolErg": "2015256380599"
+  },
+  {
+   "id": "00b42b41cb438c41d0139aa8432eb5eeb70d5a02d3df891f880d5fe08670c365",
+   "name": "CRUX",
+   "decimals": 4,
+   "poolNft": "74c1a266dbd6384a4edd2e494f19458daa1e41002dfef5f7f0047022a800d654",
+   "poolErg": "1666074301637"
+  },
+  {
+   "id": "0cd8c9f416e5b1ca9f986a7f10a84191dfb85941619e49e53c0dc30ebf83324b",
+   "name": "COMET",
+   "decimals": 0,
+   "poolNft": "1f01dc8e29806d96ca0b79f8e798cd8cfce51c0e676aaedf6ab3464b37da9dfd",
+   "poolErg": "1545992590943"
+  },
+  {
+   "id": "ae399fcb751e8e247d0da8179a2bcca2aa5119fff9c85721ffab9cdc9a3cb2dd",
+   "name": "DORT",
+   "decimals": 0,
+   "poolNft": "35bc71897cd44d1a624285c54a0be66b69d1c61674603ed89dfe136f32035f0e",
+   "poolErg": "1502853087642"
+  },
+  {
+   "id": "36aba4b4a97b65be491cf9f5ca57b5408b0da8d0194f30ec8330d1e8946161c1",
+   "name": "Erdoge",
+   "decimals": 0,
+   "poolNft": "3d4fdb931917647f4755ada29d13247686df84bd8aea060d22584081bd11ba69",
+   "poolErg": "1381494490499"
+  },
+  {
+   "id": "7ba2a85fdb302a181578b1f64cb4a533d89b3f8de4159efece75da41041537f9",
+   "name": "GORT",
+   "decimals": 0,
+   "poolNft": "d1c9e20657b4e37de3cd279a994266db34b18e6e786371832ad014fd46583198",
+   "poolErg": "1378223931371"
+  },
+  {
+   "id": "012c74dcd0920ce0c3f9f3945d509ea07b33872f3f144b816bcd7b664b22d5b3",
+   "name": "Troll",
+   "decimals": 0,
+   "poolNft": "ac1839f1aa34107dcdc4dc391e4a513c0297c158fadd122c9bb9c65291b88e6e",
+   "poolErg": "1220974597082"
+  },
+  {
+   "id": "ca0ed0092eaaa22b6bfcc407d221b3aaa5c8f643e843cb6aafff6af955947675",
+   "name": "PDV",
+   "decimals": 4,
+   "poolNft": "21eba53551868f578e9076fd9ab7d56ab188be1804008a620d327d3e7bf6b45f",
+   "poolErg": "1201219719222"
+  },
+  {
+   "id": "34d449dc84a27d0f8fb2166d415a7223604f6426fb2d83ee099f2312182d575d",
+   "name": "PHP",
+   "decimals": 8,
+   "poolNft": "d5077d8991925e30077a73eef3db94191de1b1c1605c3ed0e66ce809ae4bc6d9",
+   "poolErg": "930894686044"
+  },
+  {
+   "id": "d93a4ca89ee3b6a9aad1956effb90fd0c2f3d4049e7b354ffaf7b7e3365eef3b",
+   "name": "LEMUR ADERGO",
+   "decimals": 2,
+   "poolNft": "42a0d28617b1695a25cbeb07f7f7dda1898a014ca76a1216319b9afb5aca4cb4",
+   "poolErg": "876858537607"
+  },
+  {
+   "id": "050322548722d36f094e341f59ed93eb22118b363eb4efe8c461a52c4d93e2c3",
+   "name": "rsBNB",
+   "decimals": 9,
+   "poolNft": "771076b83afb5b1a805621524d5f2cc87a3f3decc2c4a6e8c9af4a73cdd89817",
+   "poolErg": "799317519021"
+  },
+  {
+   "id": "52f4544ce8a420d484ece16f9b984d81c23e46971ef5e37c29382ac50f80d5bd",
+   "name": "AuctionCoin",
+   "decimals": 0,
+   "poolNft": "d968ce08fd24f3f5fad86f9dded2eaf0920b63c6fd62e56489f74789a8807c2a",
+   "poolErg": "569739880888"
+  },
+  {
+   "id": "18c938e1924fc3eadc266e75ec02d81fe73b56e4e9f4e268dffffcb30387c42d",
+   "name": "AHT",
+   "decimals": 4,
+   "poolNft": "92b1600f001b3f03d7152d7da90ebe6b46fc43edd9f325adbf1677b443520dcb",
+   "poolErg": "505347603360"
+  },
+  {
+   "id": "9944ff273ff169f32b851b96bbecdbb67f223101c15ae143de82b3e7f75b19d2",
+   "name": "GluonW GAUC",
+   "decimals": 9,
+   "poolNft": "13603bb8baf55f8b92c6c130c14080543bd43afb5b022557434479bf29dabf9d",
+   "poolErg": "503752605071"
+  },
+  {
+   "id": "203ef3066a912f35c488487cc2cb94bdb0d30680dab22551c7e6fdbc70dfcc8e",
+   "name": "rsETH",
+   "decimals": 9,
+   "poolNft": "f69a638ac40743f42bc709d533c7e6b271d5204a01b1234294cdbcacc12fa267",
+   "poolErg": "502759923146"
+  },
+  {
+   "id": "b0b312cde931c8bbdac0dac5bfd8e2c03bf4611275dc967988c8d15bd5ec20e0",
+   "name": "Bober",
+   "decimals": 3,
+   "poolNft": "821e9b67d88041854afd00441f947eaa381ff20502c9bacbb48afb09219f219f",
+   "poolErg": "478026468137"
+  },
+  {
+   "id": "46700be1c5b9287acb6c7664e72883c967574db4332a3bfec59cece33b5a3177",
+   "name": "CHEPUR",
+   "decimals": 0,
+   "poolNft": "3eb10b2fe3e1df37b6166c957109bf5f2e7510bc508e4b76708a56f8a52babff",
+   "poolErg": "449503982704"
+  },
+  {
+   "id": "f100123eb4161919bc5e5b2ffe5fb91f7c93b524f372cbba5c7d6b004efa8106",
+   "name": "Shaggy",
+   "decimals": 0,
+   "poolNft": "0b3f3c7fd66bcf8c1e74f3389774b220e5450eddbc272251a65f50c9962f8fa4",
+   "poolErg": "346339599097"
+  },
+  {
+   "id": "fbbaac7337d051c10fc3da0ccb864f4d32d40027551e1c3ea3ce361f39b91e40",
+   "name": "kushti",
+   "decimals": 0,
+   "poolNft": "3d648a56fc4749fe7822a25c0abe6afba7965885880815ad4bfafae5dca7237f",
+   "poolErg": "344865428647"
+  },
+  {
+   "id": "843b5a2a0658550339c38f29827861fe459ce5206edaf17163113cccafc77af1",
+   "name": "GIF",
+   "decimals": 6,
+   "poolNft": "4d808c641ffcdb9cab2eaf7e81696009b56b4ff78dd8f29d6b102b3ad65d177e",
+   "poolErg": "299726196296"
+  },
+  {
+   "id": "d71693c49a84fbbecd4908c94813b46514b18b67a99952dc1e6e4791556de413",
+   "name": "ergopad",
+   "decimals": 2,
+   "poolNft": "d7868533f26db1b1728c1f85c2326a3c0327b57ddab14e41a2b77a5d4c20f4b2",
+   "poolErg": "281165262297"
+  },
+  {
+   "id": "ba553573f83c61be880d79db0f4068177fa75ab7c250ce3543f7e7aeb471a9d2",
+   "name": "$BASS",
+   "decimals": 7,
+   "poolNft": "8355156ed23f7d26ed6a477b12476a0a63ded7bbb63c37b955168d9c0269de90",
+   "poolErg": "274145131284"
+  },
+  {
+   "id": "9b4ad4d4468879f528a972ed66068c70dd2cf972443817c45935051d4c8c0bb8",
+   "name": "SirLentilLord",
+   "decimals": 8,
+   "poolNft": "5d8f7082a2f8fad8788b4117ed9e54a72d58bde786e1267d3d87745a14629d6d",
+   "poolErg": "271766072849"
+  },
+  {
+   "id": "7c788b124df40d5ab4d4c428dd7a1290b5b8579da4e8cbddeea060b1671312da",
+   "name": "Pumperino",
+   "decimals": 3,
+   "poolNft": "d6f5d7e7588d903efd353b75e26520e6d1200f2af7afb1b21f69cba6896dc2d2",
+   "poolErg": "269708385082"
+  },
+  {
+   "id": "4de9e7e628e4f473f954ee74c622033cf03005198293d0d2cd4ccc64288da17e",
+   "name": "Satoshi",
+   "decimals": 6,
+   "poolNft": "7ae1da1e54ed30a86ec55db45b77a798d424df12345bb80e8954f0fa353cdfcd",
+   "poolErg": "264317300357"
+  },
+  {
+   "id": "f0d5bdf474fcbd4249608e6dc6e9cf34a327b218f66445ea545b4c711b4676e3",
+   "name": "COS",
+   "decimals": 0,
+   "poolNft": "24cb8ff67d0017698eadad03e838e092a054f44f9c447eca6273568ee3f710de",
+   "poolErg": "263030556533"
+  },
+  {
+   "id": "48132396ebd00831e603c73cf01e01f248dd1966d2cc976caf52ef76f7ac6e36",
+   "name": "rsDOGE",
+   "decimals": 6,
+   "poolNft": "ed4ac9cf07918b9b0519d0b120ffd70090b3390569ec028933b13309bf5670ad",
+   "poolErg": "261455346763"
+  },
+  {
+   "id": "4ba9550720bc6520c8d58b1e8d7615627b775440f8d642415df1581eacf6d68a",
+   "name": "rsSNEK",
+   "decimals": 0,
+   "poolNft": "914ff648dc803839a9d6258f2bb7cd32328afbdd3707c6680ccaf47413ef100c",
+   "poolErg": "245317933605"
+  },
+  {
+   "id": "b780a9682ba1ea68eedfe3dd00169e414ea8968d96142ee95e2391d64df05c3d",
+   "name": "rsDIS",
+   "decimals": 8,
+   "poolNft": "cd7d7597bbff49edf6a41da08500325f35ba27905fa075502191109499ef948a",
+   "poolErg": "243578595127"
+  },
+  {
+   "id": "886b7721bef42f60c6317d37d8752da8aca01898cae7dae61808c4a14225edc8",
+   "name": "GluonW GAU",
+   "decimals": 9,
+   "poolNft": "96a80f3ff1764192205b665f313b080db7ce537316785cf67342024884d42141",
+   "poolErg": "233963830048"
+  },
+  {
+   "id": "3fba7e9e77350709a1aeddd0c47ad7f7675e16cb06bd19264cecf49d16d4368f",
+   "name": "PJs",
+   "decimals": 2,
+   "poolNft": "3c1a370ef3be509e9ae9e945735b2a65a4e373f6eba3fdbbf9c9c8744c7a574a",
+   "poolErg": "176567510777"
+  },
+  {
+   "id": "41006d8826e1eb86cf997b8ce75ec779cdf144570b86c99bfea1a09eb0465e66",
+   "name": "GCTT",
+   "decimals": 0,
+   "poolNft": "92023b0d7ce6fe8a4168f839781280f77fe4d2df027e7dcf4644f7f153d32622",
+   "poolErg": "152701898305"
+  },
+  {
+   "id": "ebb40ecab7bb7d2a935024100806db04f44c62c33ae9756cf6fc4cb6b9aa2d12",
+   "name": "🚬",
+   "decimals": 0,
+   "poolNft": "76882c04ad03a3224b4cc4e1608d94ff65e0c84eb3b225cb63e4efa97fe4064b",
+   "poolErg": "122168138223"
+  },
+  {
+   "id": "1f649a7560f9d1b697d4225c57c9040c9101e4181dae134541ee8afec92944c5",
+   "name": "catWITHbat",
+   "decimals": 0,
+   "poolNft": "08697770512e32d3efeb2d6fb6bc0f7540a490d8c13c1242e4273117f15f0027",
+   "poolErg": "119146625476"
+  },
+  {
+   "id": "fbf6216e268d5dc0e7e51a5f31586be3ebb6f1597a2f6f2a31fc39c6abad5f00",
+   "name": "ErgoCapital",
+   "decimals": 1,
+   "poolNft": "a385d6fbc137f516e23d67a5b156a1904bc5068f6b03209a166117df32152e46",
+   "poolErg": "116843570302"
+  }
+ ]
+}
