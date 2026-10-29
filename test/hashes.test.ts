@@ -13,6 +13,9 @@ import {
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { ErgoAddress } from "@fleet-sdk/core";
 import { bondContract, orderContract, SIGMAFI_TEMPLATES } from "../src/bonds";
+import { compile } from "@fleet-sdk/compiler";
+import { CLOCK_SLACK, CLOCK_TEMPLATE_SHA256, CLOCK_TREE } from "../src/clock";
+import CLOCK_SOURCE from "../contracts/Clock.es?raw";
 
 const h = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
 
@@ -32,6 +35,16 @@ describe("template hashes match their trees", () => {
       assets: { base: { tokenId: "ERG", amount: 0n }, quote: { tokenId: "11".repeat(32), amount: 1n } },
     }).ergoTree;
     expect(h(tree)).toBe(E2T_LIMIT_TEMPLATE_SHA256);
+  });
+  it("the clocked box: the pinned tree is what contracts/Clock.es compiles to", () => {
+    expect(h(CLOCK_TREE)).toBe(CLOCK_TEMPLATE_SHA256);
+    // the same compile as scripts/compile-clock.ts: ErgoTree v1, segregated constants, SLACK substituted
+    const tree = compile(CLOCK_SOURCE.replace(/\$SLACK/g, String(CLOCK_SLACK)), {
+      version: 1,
+      segregateConstants: true,
+    });
+    expect(tree.toHex()).toBe(CLOCK_TREE);
+    expect(h(tree.toHex())).toBe(CLOCK_TEMPLATE_SHA256);
   });
   it("SigmaFi orders and bonds", () => {
     expect(h(orderContract("ERG"))).toBe(SIGMAFI_TEMPLATES.orderOnCloseErg);

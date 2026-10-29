@@ -33,10 +33,17 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
 - **Escrow**: a token sale to one named buyer at an ERG price on TokenJay's deployed escrow contract. The contract
   demands a small fee box, which the page pays to the seller, so a sale costs the miner fee only. Your own escrows
   first, then every other open one on the contract.
+- **Programs**: a clocked box, this project's own contract (`contracts/Clock.es`, chartered as skunkyard SK-064).
+  Lock an ERG budget to be bought in slices, one every N blocks, from the token's deepest ErgoDEX pool, the tokens
+  to your address: dollar-cost averaging with no custodian and no key but yours. Anyone may run a leg once its
+  interval has passed, for the executor fee you set (the page's own upkeep and the Node runner do); each leg must
+  deliver at least the pool's own rule for the slice, less your tolerance, and an optional price cap makes the
+  program wait while the pool is dearer. The box holds one storage-rent fee that comes back with the last leg.
+  Cancel any time, everything back.
 - **Chain upkeep while you are here.** With a wallet connected, the page looks every few minutes for boxes anyone
   may act on for a bounty, builds those transactions with no signature and none of your funds, submits them through
   the explorer, and sends the bounty to your address. Today's jobs: Babel bids (EIP-31) priced above their token's
-  pool, and Machina limit orders priced across the pool, either side. Default on, one checkbox to turn off. It never
+  pool, Machina limit orders priced across the pool, either side, and the legs of clocked programs that are due. Default on, one checkbox to turn off. It never
   touches your own transaction, so a contended box costs you nothing but a log line. The same jobs run headless
   from Node (`scripts/upkeep-run.ts <address>`), which is the sidecar for anyone who wants to keep the chain tidy
   without a browser open. One more job needs your wallet: if a SigmaFi bond you lent on has matured, the page builds
@@ -62,7 +69,8 @@ Your keys stay in your wallet.
 So a FreeDEX swap costs the pool's fee plus 0.001 ERG. Nothing else, and nothing to anyone running the page. The
 other column describes the proxy-order design (an order box executed by an off-chain bot), not any one site's
 numbers. Where a protocol's own contract carries a fee (SigmaFi's 0.5% to its developer, the SigmaUSD bank's 2%),
-the page shows it; it adds none of its own anywhere.
+the page shows it; it adds none of its own anywhere. A program's executor fee is the owner's choice, paid per leg
+to whoever runs it; the page adds none of its own there either.
 
 ## Use it
 
@@ -96,10 +104,14 @@ contents of `dist/`.
 - `src/bank.ts`, `src/bonds.ts`, `src/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay escrow on their
   deployed contracts; `src/sigmafi-contracts.json` holds SigmaFi's contract hex as extracted from its MIT source.
 - `src/babel.ts`, `src/machina-arb.ts`, `src/upkeep.ts`: the keyless takes (sizing against the pool's rule, no
-  signature) and the job runner.
+  signature) and the job runner, including the `clock-legs` job.
+- `contracts/Clock.es`, `src/clock.ts`, `scripts/compile-clock.ts`: the clocked box's source, its pinned tree and
+  the builders (create with the rent and length checks, the keyless leg, cancel); `test/hashes.test.ts` recompiles
+  the source and checks it against the pinned bytes.
 - `src/wallet.ts`: EIP-12 connect, balances, UTXOs, sign and submit.
 - `src/units.ts`: decimal text to smallest units and back, exact.
-- `src/ui/`: one module per tab (`swap.ts`, `orders.ts`, `pool.ts`, `bank.ts`, `bonds.ts`, `escrow.ts`), the header
+- `src/ui/`: one module per tab (`swap.ts`, `orders.ts`, `pool.ts`, `bank.ts`, `bonds.ts`, `escrow.ts`,
+  `programs.ts`), the header
   (`header.ts`, `wallet.ts`), the upkeep timer (`upkeep.ts`), the shared state with its subscriptions (`store.ts`)
   and the DOM helpers (`dom.ts`). Chain-sourced strings only ever become text nodes; nothing writes `innerHTML`.
 - `src/main.ts`, `index.html`: the tab switcher and the boot sequence; the page.
@@ -113,7 +125,12 @@ contents of `dist/`.
 - Limit orders: the contract's price is an integer in nanoERG per smallest token unit. The page shows ERG per whole
   token and refuses a price it would have to round. Orders are labelled by what the taker does, as the contract does.
 - Not yet: token-to-token limit orders, grid orders, a mobile (ErgoPay) signing path, multi-hop swaps in one go,
-  Duckpools borrowing, the clocked box (DCA, tranche sales) and the timed-escrow option, which are chartered.
+  Duckpools borrowing, the tranche sale (the clocked box with tokens in it, selling a slice per leg) and the
+  timed-escrow option, which are chartered.
+- Programs: the price cap is an integer in nanoERG per smallest token unit, so a cap below one nanoERG per unit
+  cannot be expressed. An executor may shorten one interval by at most 4 blocks (`SLACK`); intervals of a few
+  blocks are a test setting. The storage-rent reserve is one rent fee for the box's bytes (about 0.84 ERG for a
+  671-byte box); it is held, not spent, and returned with the last leg.
 - A deposit needs tokens at the pool's ratio; the page computes the token amount from the ERG amount and tells you
   if the wallet is short before anything is signed.
 
@@ -125,21 +142,22 @@ pocket change: this is days old.
 
 ### Mainnet transactions from these builders
 
-| what                                                                      | transaction                                                                                                                                                                                                |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| fill a stranger's limit order (buy 1.00 FAKU)                             | `b5de600959b49f8485d1c652bc3e71a50ccb063dd9512d60b3ee6dbf9fa386e2`                                                                                                                                         |
-| place a limit order (sell 1.00 FAKU)                                      | `2abc992b14f9be5a904a8b850aa8faffdac90cb8ef82c6c29954f0a55029adf2`                                                                                                                                         |
-| partial fill of that order (40 units)                                     | `6ebf30c18f064ec516715ad67d6b0fcbd9a200b841c70489e268c44c54db3859`                                                                                                                                         |
-| close it (60 units back)                                                  | `95a939cb823e49e4d4f4dd01d44a391a87eb78bb12c363e6f7ae8efdaf9bb956`                                                                                                                                         |
-| pool swap, 0.01 ERG to rsADA                                              | `ea0a7dfeb6964df57c5fcf86a4734c44572f58547aedad36ddbeb38e1c3ba9d4`                                                                                                                                         |
-| pool swap back, rsADA to ERG                                              | `7303dce957bf31a2d4d8518a8a639b3b464c648a7304bd905044aafac163eea8`                                                                                                                                         |
-| add liquidity, 0.003 ERG + FAKU                                           | `5eaa12e353aa67277823793ee7f3892193fe50fd93d7e26c3a8c8528a0747b17`                                                                                                                                         |
-| remove liquidity, the LP tokens back                                      | `fd30f0e688047b91dc3461ee322ae9dbcb65bbaf4c3ebdd1196cc80742e0f4aa`                                                                                                                                         |
-| token-to-token swap, FAKU to CYPX                                         | `643be27f7a2f28a81d88a3297a8107eff790bd05fda26af21249acd7558eb2c5`                                                                                                                                         |
-| keyless upkeep: a live Babel bid taken through the explorer, no signature | `43f5fe4560ad967619c8dc9bcdcc23db641f715f8c828fd82f37d75c2ec214cb`                                                                                                                                         |
-| escrow: offer 10 FAKU to a named buyer, then the buyer takes it           | `d9d8b0af26deb343b527f5dc8ef47655b96c67a0c75f09568bf851f904b34371`, `10017e3b141bc114c73e9d9d934213a97bc193cd7c050f0b455e24da53c22a95`                                                                     |
-| bonds: request a loan, fund it, repay it before maturity                  | `887902b55bea59e86cdab33bebd830d7f85f098a5932759dba3cf11152e9814f`, `ae235887046f36450bbfe25974b280660a14001949fb3693510e655a0e479635`, `24a2be9d647edc06158e88ac8a00157192b8674cda149fc471277a8d36087c46` |
-| bank: mint 100 SigRSV, redeem 0.05 SigUSD                                 | `c9feee3d5b22a692cfe3c4c50f28960089b2852d8350a029f8079e50705a3c6a`, `96478f1bb4f2e36891ff16e126c9f2ee675d6f49ae46e641237c1b1f0a0a29d0`                                                                     |
+| what                                                                                                                                               | transaction                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| fill a stranger's limit order (buy 1.00 FAKU)                                                                                                      | `b5de600959b49f8485d1c652bc3e71a50ccb063dd9512d60b3ee6dbf9fa386e2`                                                                                                                                                                                                             |
+| place a limit order (sell 1.00 FAKU)                                                                                                               | `2abc992b14f9be5a904a8b850aa8faffdac90cb8ef82c6c29954f0a55029adf2`                                                                                                                                                                                                             |
+| partial fill of that order (40 units)                                                                                                              | `6ebf30c18f064ec516715ad67d6b0fcbd9a200b841c70489e268c44c54db3859`                                                                                                                                                                                                             |
+| close it (60 units back)                                                                                                                           | `95a939cb823e49e4d4f4dd01d44a391a87eb78bb12c363e6f7ae8efdaf9bb956`                                                                                                                                                                                                             |
+| pool swap, 0.01 ERG to rsADA                                                                                                                       | `ea0a7dfeb6964df57c5fcf86a4734c44572f58547aedad36ddbeb38e1c3ba9d4`                                                                                                                                                                                                             |
+| pool swap back, rsADA to ERG                                                                                                                       | `7303dce957bf31a2d4d8518a8a639b3b464c648a7304bd905044aafac163eea8`                                                                                                                                                                                                             |
+| add liquidity, 0.003 ERG + FAKU                                                                                                                    | `5eaa12e353aa67277823793ee7f3892193fe50fd93d7e26c3a8c8528a0747b17`                                                                                                                                                                                                             |
+| remove liquidity, the LP tokens back                                                                                                               | `fd30f0e688047b91dc3461ee322ae9dbcb65bbaf4c3ebdd1196cc80742e0f4aa`                                                                                                                                                                                                             |
+| token-to-token swap, FAKU to CYPX                                                                                                                  | `643be27f7a2f28a81d88a3297a8107eff790bd05fda26af21249acd7558eb2c5`                                                                                                                                                                                                             |
+| keyless upkeep: a live Babel bid taken through the explorer, no signature                                                                          | `43f5fe4560ad967619c8dc9bcdcc23db641f715f8c828fd82f37d75c2ec214cb`                                                                                                                                                                                                             |
+| escrow: offer 10 FAKU to a named buyer, then the buyer takes it                                                                                    | `d9d8b0af26deb343b527f5dc8ef47655b96c67a0c75f09568bf851f904b34371`, `10017e3b141bc114c73e9d9d934213a97bc193cd7c050f0b455e24da53c22a95`                                                                                                                                         |
+| bonds: request a loan, fund it, repay it before maturity                                                                                           | `887902b55bea59e86cdab33bebd830d7f85f098a5932759dba3cf11152e9814f`, `ae235887046f36450bbfe25974b280660a14001949fb3693510e655a0e479635`, `24a2be9d647edc06158e88ac8a00157192b8674cda149fc471277a8d36087c46`                                                                     |
+| programs: create a clocked program (3 legs of 0.01 ERG, FAKU), then its three legs executed keylessly by the Node runner, the last closing the box | `3d509bf569271685d00e97dbd89299b125cf25e45761c18869475c290c2f9ae4`, `95082ff30496dcae33049adb889c47962c0e3efab534b2c358d1f5fdc4e3ca8b`, `44c970a3b7cc7e3fec830068249f6eafdb19709303931feca3c2009842974833`, `3abd3594996ec91c0256a7187a70a7bbb3568e11f857e73fd2f66b6efcca1c15` |
+| bank: mint 100 SigRSV, redeem 0.05 SigUSD                                                                                                          | `c9feee3d5b22a692cfe3c4c50f28960089b2852d8350a029f8079e50705a3c6a`, `96478f1bb4f2e36891ff16e126c9f2ee675d6f49ae46e641237c1b1f0a0a29d0`                                                                                                                                         |
 
 ## Review of 2026-10-30
 

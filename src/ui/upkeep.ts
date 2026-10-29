@@ -15,6 +15,8 @@ export function mountUpkeep(store: Store) {
   let busy = false;
   /** bonds the wallet was already asked about this session */
   const asked = new Set<string>();
+  /** boxes the keyless jobs spent lately, so a transaction still in the mempool is not repeated */
+  const recent = new Map<string, number>();
   const onEl = $<HTMLInputElement>("upkeep-on");
   const status = $("upkeep-status");
 
@@ -23,7 +25,7 @@ export function mountUpkeep(store: Store) {
     if (!onEl.checked || !wallet || busy) return;
     busy = true;
     try {
-      const r = await runUpkeep(store.explorer, wallet.changeAddress, log);
+      const r = await runUpkeep(store.explorer, wallet.changeAddress, log, recent);
       let collateral = 0;
       const due = await maturedBondsFor(store.explorer, await store.explorer.height(), wallet.usedAddresses);
       for (const { box, v } of due) {

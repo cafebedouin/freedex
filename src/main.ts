@@ -7,6 +7,7 @@ import { mountEscrow } from "./ui/escrow";
 import { mountHeader } from "./ui/header";
 import { mountOrders } from "./ui/orders";
 import { mountPool } from "./ui/pool";
+import { mountPrograms } from "./ui/programs";
 import { Store } from "./ui/store";
 import { mountSwap } from "./ui/swap";
 import { mountUpkeep } from "./ui/upkeep";
@@ -25,6 +26,7 @@ const tabs: Record<string, { show?: () => void; load?: () => Promise<void> }> = 
   bank: mountBank(store),
   bonds: mountBonds(store),
   escrow: mountEscrow(store),
+  programs: mountPrograms(store),
 };
 mountUpkeep(store);
 

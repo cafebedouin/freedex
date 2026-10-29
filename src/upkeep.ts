@@ -8,6 +8,7 @@ import { serializeTransaction } from "@fleet-sdk/serializer";
 import { describePool } from "./amm.ts";
 import { buildBabelTake, describeBabel } from "./babel.ts";
 import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./bonds.ts";
+import { CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./clock.ts";
 import type { Explorer } from "./explorer.ts";
 import { buildOrderTake } from "./machina-arb.ts";
 import { FEE, describe as describeOrder } from "./orders.ts";
@@ -98,7 +99,44 @@ export const ordersVsPool: UpkeepJob = {
   },
 };
 
-export const JOBS: UpkeepJob[] = [babelVsPool, ordersVsPool];
+/**
+ * Clocked boxes (contracts/Clock.es) whose interval has passed: one leg each against the program's own pool, the
+ * tokens to the owner, the executor fee to the visitor. `buildLeg` declines a leg that is not due, is above the
+ * program's price cap, or whose fee does not cover the miner fee and the owner's output.
+ */
+export const clockLegs: UpkeepJob = {
+  name: "clock-legs",
+  async find(explorer, height, payTo) {
+    const boxes = await explorer.byTemplate(CLOCK_TEMPLATE_SHA256, 500);
+    const out: UpkeepCandidate[] = [];
+    for (const clockBox of boxes) {
+      let v;
+      try {
+        v = describeClock(clockBox);
+      } catch {
+        continue;
+      }
+      if (height < v.dueAt) continue;
+      let built;
+      try {
+        const poolBox = (await explorer.poolByNft(v.poolNft)).box;
+        built = buildLeg({ height, poolBox, clockBox, payTo });
+      } catch {
+        continue;
+      }
+      if (!built) continue;
+      out.push({
+        job: this.name,
+        what: `program ${v.boxId.slice(0, 8)} on ${v.tokenId.slice(0, 8)}: ${built.size.amt} nanoERG for ${built.size.got} units to its owner${built.size.last ? ", the last leg" : ""}, ${built.size.payout} nanoERG to you`,
+        bounty: built.size.payout,
+        tx: built.tx,
+      });
+    }
+    return out.sort((a, b) => (b.bounty > a.bounty ? 1 : -1));
+  },
+};
+
+export const JOBS: UpkeepJob[] = [babelVsPool, ordersVsPool, clockLegs];
 
 /**
  * Matured SigmaFi bonds whose lender is one of `addresses` and whose collateral is worth more than the miner fee:
@@ -166,16 +204,26 @@ export function keylessJson(tx: EIP12UnsignedTransaction): { id: string; json: s
   return { id, json: JSON.stringify(signed) };
 }
 
-/** Run every job once; submit each candidate; report what happened. Candidates sharing an input are tried in order. */
+/** How long a box an upkeep transaction spent is left alone afterwards: the explorer lists it as unspent until the block. */
+export const RECENT_MS = 10 * 60 * 1000;
+
+/**
+ * Run every job once; submit each candidate; report what happened. Candidates sharing an input are tried in order.
+ * `recent` (box id to the time it was spent) carries across runs so a box whose transaction is still in the mempool
+ * is not spent twice; the caller keeps it.
+ */
 export async function runUpkeep(
   explorer: Explorer,
   payTo: ErgoAddress,
   log: (m: string) => void,
+  recent: Map<string, number> = new Map(),
 ): Promise<{ found: number; submitted: string[] }> {
   const height = await explorer.height();
   const submitted: string[] = [];
   let found = 0;
-  const spent = new Set<string>();
+  const now = Date.now();
+  for (const [id, at] of recent) if (now - at > RECENT_MS) recent.delete(id);
+  const spent = new Set<string>(recent.keys());
   for (const job of JOBS) {
     let cands: UpkeepCandidate[];
     try {
@@ -190,7 +238,10 @@ export async function runUpkeep(
       try {
         const { id, json } = keylessJson(c.tx);
         await explorer.submit(json);
-        for (const i of c.tx.inputs) spent.add(i.boxId);
+        for (const i of c.tx.inputs) {
+          spent.add(i.boxId);
+          recent.set(i.boxId, now);
+        }
         submitted.push(id);
         log(`upkeep ${c.job}: ${c.what}; submitted ${id}`);
       } catch (e) {

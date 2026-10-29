@@ -4,3 +4,5 @@ node_modules/
 package-lock.json
 *.json
 index.html
+# ErgoScript sources are not JavaScript
+contracts/

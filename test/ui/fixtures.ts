@@ -5,6 +5,7 @@ import { SIGMA_USD_PARAMETERS } from "@fleet-sdk/ageusd-plugin";
 import { SGroupElement, SInt, SLong, SSigmaProp } from "@fleet-sdk/serializer";
 import { POOL_TREE, T2T_POOL_TREE } from "../../src/amm";
 import { babelTree } from "../../src/babel";
+import { CLOCK_TREE, buildCreateClock } from "../../src/clock";
 import { bondContract, buildLend, buildOpenOrder, orderContract } from "../../src/bonds";
 import { ESCROW_TREE, buildCreateEscrow } from "../../src/escrow";
 import { buildCreate } from "../../src/orders";
@@ -240,7 +241,36 @@ export function makeWorld() {
     }),
     me,
   );
-  chain.jumpTo(chain.height + 101); // the lent bond has matured
+  // clocked programs on RSN (a pool no other upkeep job contends for): the stranger's, due after the jump below,
+  // and the visitor's own
+  const programs = chain.addParty(CLOCK_TREE, "programs");
+  chain.addParty(programs);
+  parties.push(programs);
+  const program = {
+    tokenId: RSN,
+    poolBox: poolRsn.utxos.at(0),
+    slice: 100_000_000n,
+    interval: 10,
+    toleranceBps: 50n,
+    executorFee: 1_500_000n,
+    maxPrice: 0n,
+    legs: 3,
+  };
+  run(
+    buildCreateClock({ ...program, owner: stranger.address, height: chain.height, inputs: stranger.utxos.toArray() }),
+    stranger,
+  );
+  run(
+    buildCreateClock({
+      ...program,
+      interval: 720,
+      owner: me.address,
+      height: chain.height,
+      inputs: me.utxos.toArray(),
+    }),
+    me,
+  );
+  chain.jumpTo(chain.height + 101); // the lent bond has matured, the stranger's program is due
 
   // escrows: the stranger offers 10 SigUSD units to the visitor at 0.002 ERG; another between strangers
   const escrows = chain.addParty(ESCROW_TREE, "escrows");
@@ -281,5 +311,5 @@ export function makeWorld() {
     tokens,
     submitted: [],
   };
-  return { chain, me, stranger, other, world, bonds, escrows };
+  return { chain, me, stranger, other, world, bonds, escrows, programs };
 }
