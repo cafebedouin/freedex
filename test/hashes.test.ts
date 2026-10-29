@@ -23,6 +23,9 @@ import {
 } from "../src/clock";
 import CLOCK_SOURCE from "../contracts/Clock.es?raw";
 import CLOCK_SELL_SOURCE from "../contracts/ClockSell.es?raw";
+import { CALL_TEMPLATE_SHA256, CALL_TREE, PUT_TEMPLATE_SHA256, PUT_TREE } from "../src/option";
+import CALL_SOURCE from "../contracts/Call.es?raw";
+import PUT_SOURCE from "../contracts/Put.es?raw";
 
 const h = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
 
@@ -54,6 +57,17 @@ describe("template hashes match their trees", () => {
     expect(h(CLOCK_SELL_TREE)).toBe(CLOCK_SELL_TEMPLATE_SHA256);
     expect(compiled(CLOCK_SELL_SOURCE)).toBe(CLOCK_SELL_TREE);
     expect(CLOCK_SELL_TEMPLATE_SHA256).not.toBe(CLOCK_TEMPLATE_SHA256);
+  });
+  // the same compile as scripts/compile-option.ts: ErgoTree v1, segregated constants, no substitution
+  const compiledPlain = (source: string) => compile(source, { version: 1, segregateConstants: true }).toHex();
+  it("the call: the pinned tree is what contracts/Call.es compiles to", () => {
+    expect(h(CALL_TREE)).toBe(CALL_TEMPLATE_SHA256);
+    expect(compiledPlain(CALL_SOURCE)).toBe(CALL_TREE);
+  });
+  it("the put: the pinned tree is what contracts/Put.es compiles to", () => {
+    expect(h(PUT_TREE)).toBe(PUT_TEMPLATE_SHA256);
+    expect(compiledPlain(PUT_SOURCE)).toBe(PUT_TREE);
+    expect(PUT_TEMPLATE_SHA256).not.toBe(CALL_TEMPLATE_SHA256);
   });
   it("SigmaFi orders and bonds", () => {
     expect(h(orderContract("ERG"))).toBe(SIGMAFI_TEMPLATES.orderOnCloseErg);

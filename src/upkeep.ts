@@ -11,6 +11,7 @@ import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./bonds.ts";
 import { CLOCK_SELL_TEMPLATE_SHA256, CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./clock.ts";
 import type { Explorer } from "./explorer.ts";
 import { buildOrderTake } from "./machina-arb.ts";
+import { CALL_TEMPLATE_SHA256, PUT_TEMPLATE_SHA256, describeOption, type OptionView } from "./option.ts";
 import { FEE, describe as describeOrder } from "./orders.ts";
 
 /** The deepest ERG pool per token id. */
@@ -171,6 +172,35 @@ export async function maturedBondsFor(
     }
     if (!addresses.includes(v.lender) || height < v.maturity) continue;
     if (v.collateralTokens.length === 0 && BigInt(box.value) <= FEE) continue;
+    out.push({ box, v });
+  }
+  return out;
+}
+
+/**
+ * Expired options (contracts/Call.es, contracts/Put.es) whose writer is one of `addresses`: the reclaim is the
+ * writer's key path, so, as with the lender's collateral, the page builds `buildReclaim` with the visitor's wallet
+ * when the visitor is that writer. An unsold offer that has not expired is left alone: cancelling it is a choice.
+ */
+export async function expiredOptionsFor(
+  explorer: Explorer,
+  height: number,
+  addresses: string[],
+): Promise<{ box: Box<bigint>; v: OptionView }[]> {
+  if (addresses.length === 0) return [];
+  const [calls, puts] = await Promise.all([
+    explorer.byTemplate(CALL_TEMPLATE_SHA256, 500),
+    explorer.byTemplate(PUT_TEMPLATE_SHA256, 500),
+  ]);
+  const out: { box: Box<bigint>; v: OptionView }[] = [];
+  for (const box of [...calls, ...puts]) {
+    let v: OptionView;
+    try {
+      v = describeOption(box);
+    } catch {
+      continue;
+    }
+    if (!addresses.includes(v.writer) || height < v.expiry) continue;
     out.push({ box, v });
   }
   return out;

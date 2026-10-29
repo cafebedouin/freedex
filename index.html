@@ -45,7 +45,7 @@
     <div><select id="explorer-pick" class="small" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="explorer-status" class="muted small"></span> <span id="wallet"></span></div>
   </header>
   <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
-  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool, and the legs of clocked programs that are due), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, it asks your wallet once to sign the transaction that hands you the collateral (you pay the miner fee). <span id="upkeep-status" class="muted"></span></label></p>
+  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool, and the legs of clocked programs that are due), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, or an option you wrote has expired, it asks your wallet once to sign the transaction that hands you the collateral or the box (you pay the miner fee). <span id="upkeep-status" class="muted"></span></label></p>
 
   <nav role="tablist">
     <button role="tab" data-tab="swap" aria-selected="true">Swap</button>
@@ -55,6 +55,7 @@
     <button role="tab" data-tab="bonds" aria-selected="false">Bonds</button>
     <button role="tab" data-tab="escrow" aria-selected="false">Escrow</button>
     <button role="tab" data-tab="programs" aria-selected="false">Programs</button>
+    <button role="tab" data-tab="options" aria-selected="false">Options</button>
   </nav>
 
   <section id="tab-swap">
@@ -218,6 +219,36 @@
       <input id="prog-fee" inputmode="decimal" value="0.0015" required />
       <dl id="prog-quote" style="grid-column: 1 / -1"></dl>
       <button type="submit" id="prog-go" disabled>Build, sign in wallet, submit</button>
+    </form>
+  </section>
+
+  <section id="tab-options" hidden>
+    <p class="muted small">An option here is a limit order you are paid to hold open, that you cannot cancel until a date. This project's own contracts (<code>contracts/Call.es</code> and <code>contracts/Put.es</code>, chartered as skunkyard SK-065): TokenJay's escrow with an offer-to-write step, a deadline that locks the writer, and no fee line. A <b>call</b>: you lock tokens and name a strike, an expiry height and a premium; whoever pays the premium may buy the tokens from you at the strike at or before the expiry; after it the tokens come back to you, and the premium is yours either way. A <b>put</b> is the mirror: you lock the ERG collateral (strike x amount) and whoever pays the premium may sell you the tokens at the strike. Until an option is sold you may cancel it; once sold, only the buyer's exercise or your reclaim after the expiry can spend it. Everything is collateralized in the box: no leverage, nothing to liquidate, no price feed, no partial exercise. The buyer's right is an address written into the box, not a token, so it cannot be resold: SigmaO and Etcha are the token-based options on Ergo. A call box also holds one storage-rent fee for its bytes (back to you on exercise or reclaim), because a token box that cannot pay rent is consumed whole; a put box holds the collateral only. The contract pays nothing to anyone and the page adds nothing; when an option you wrote has expired, the page's upkeep asks your wallet once to reclaim it.</p>
+    <h2>Your positions</h2>
+    <div id="options-mine">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Open offers</h2>
+    <div id="options-list">loading…</div>
+    <h2 style="margin-top:1.25rem">Write an option</h2>
+    <form id="write-option" class="grid">
+      <label for="opt-side">Side</label>
+      <select id="opt-side">
+        <option value="call">call: lock tokens, be paid to let someone buy them at the strike</option>
+        <option value="put">put: lock ERG, be paid to let someone sell you tokens at the strike</option>
+      </select>
+      <label for="opt-token-pick">Token</label>
+      <select id="opt-token-pick"></select>
+      <label for="opt-token">Token id</label>
+      <input id="opt-token" size="64" pattern="[0-9a-fA-F]{64}" required />
+      <label for="opt-amount" id="opt-amount-label">Tokens to lock (the buyer may buy them)</label>
+      <input id="opt-amount" inputmode="decimal" required />
+      <label for="opt-strike" id="opt-strike-label">Strike (ERG per token the buyer pays)</label>
+      <input id="opt-strike" inputmode="decimal" required />
+      <label for="opt-expiry">Expiry (blocks from now) <span id="opt-expiry-days" class="muted"></span></label>
+      <input id="opt-expiry" inputmode="numeric" value="720" required />
+      <label for="opt-premium">Premium (ERG the buyer pays you)</label>
+      <input id="opt-premium" inputmode="decimal" value="0.001" required />
+      <dl id="opt-quote" style="grid-column: 1 / -1"></dl>
+      <button type="submit" id="opt-go" disabled>Build, sign in wallet, submit</button>
     </form>
   </section>
 

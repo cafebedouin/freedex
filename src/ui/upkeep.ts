@@ -2,8 +2,10 @@
 // across their pool, submitted with no signature, bounty to the visitor), then the one job that needs the visitor's
 // wallet: a matured SigmaFi bond whose lender is the visitor, whose collateral the page hands to them. The contract
 // path is keyless; the miner fee comes from the visitor's change, so the wallet is asked to sign, once per bond.
+// The same for an expired option the visitor wrote: its reclaim is the writer's key path, asked once per box.
 import { buildLiquidate } from "../bonds";
-import { maturedBondsFor, runUpkeep } from "../upkeep";
+import { buildReclaim } from "../option";
+import { expiredOptionsFor, maturedBondsFor, runUpkeep } from "../upkeep";
 import { $, err, log } from "./dom";
 import type { Store } from "./store";
 import { send } from "./wallet";
@@ -27,7 +29,8 @@ export function mountUpkeep(store: Store) {
     try {
       const r = await runUpkeep(store.explorer, wallet.changeAddress, log, recent);
       let collateral = 0;
-      const due = await maturedBondsFor(store.explorer, await store.explorer.height(), wallet.usedAddresses);
+      const height = await store.explorer.height();
+      const due = await maturedBondsFor(store.explorer, height, wallet.usedAddresses);
       for (const { box, v } of due) {
         if (asked.has(box.boxId)) continue;
         asked.add(box.boxId);
@@ -43,7 +46,23 @@ export function mountUpkeep(store: Store) {
           log(`upkeep lender-collateral: bond ${v.boxId.slice(0, 8)}; not submitted (${err(e)})`);
         }
       }
-      status.textContent = `(last check ${new Date().toISOString().slice(11, 16)} UTC: ${r.found + due.length} due, ${r.submitted.length + collateral} submitted)`;
+      const expired = await expiredOptionsFor(store.explorer, height, wallet.usedAddresses);
+      for (const { box, v } of expired) {
+        if (asked.has(box.boxId)) continue;
+        asked.add(box.boxId);
+        try {
+          const id = await send(store, (h, inputs) =>
+            buildReclaim({ height: h, inputs, writer: wallet.changeAddress, optionBox: box }),
+          );
+          collateral++;
+          log(
+            `upkeep option-reclaim: ${v.side} ${v.boxId.slice(0, 8)} expired at ${v.expiry}; its ${v.side === "call" ? "tokens and reserve" : "collateral"} to you; submitted ${id}`,
+          );
+        } catch (e) {
+          log(`upkeep option-reclaim: ${v.side} ${v.boxId.slice(0, 8)}; not submitted (${err(e)})`);
+        }
+      }
+      status.textContent = `(last check ${new Date().toISOString().slice(11, 16)} UTC: ${r.found + due.length + expired.length} due, ${r.submitted.length + collateral} submitted)`;
     } catch (e) {
       status.textContent = `(upkeep: ${err(e)})`;
     } finally {

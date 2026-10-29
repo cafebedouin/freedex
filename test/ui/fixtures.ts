@@ -8,6 +8,7 @@ import { babelTree } from "../../src/babel";
 import { CLOCK_SELL_TREE, CLOCK_TREE, buildCreateClock, buildCreateClockSell } from "../../src/clock";
 import { bondContract, buildLend, buildOpenOrder, orderContract } from "../../src/bonds";
 import { ESCROW_TREE, buildCreateEscrow } from "../../src/escrow";
+import { CALL_TREE, PUT_TREE, buildBuy as buildOptionBuy, buildWrite } from "../../src/option";
 import { buildCreate } from "../../src/orders";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import tokenlist from "../../src/tokenlist.json" with { type: "json" };
@@ -327,6 +328,69 @@ export function makeWorld() {
     stranger,
   );
 
+  // options (SK-065) on SigUSD: the stranger's unsold call offer; a call the visitor bought from the stranger; a call
+  // the visitor wrote that expires 50 blocks from here (the options UI test moves the world past it); the stranger's
+  // unsold put offer
+  const calls = chain.addParty(CALL_TREE, "calls");
+  const puts = chain.addParty(PUT_TREE, "puts");
+  chain.addParty(calls);
+  chain.addParty(puts);
+  parties.push(calls, puts);
+  const callTerms = { side: "call" as const, tokenId: SIGUSD, amount: 100n, strike: 600_000n, premium: 2_000_000n };
+  run(
+    buildWrite({
+      ...callTerms,
+      writer: stranger.address,
+      expiry: chain.height + 500,
+      height: chain.height,
+      inputs: stranger.utxos.toArray(),
+    }),
+    stranger,
+  );
+  run(
+    buildWrite({
+      ...callTerms,
+      writer: stranger.address,
+      expiry: chain.height + 400,
+      height: chain.height,
+      inputs: stranger.utxos.toArray(),
+    }),
+    stranger,
+  );
+  run(
+    buildOptionBuy({
+      height: chain.height,
+      inputs: me.utxos.toArray(),
+      buyer: me.address,
+      optionBox: calls.utxos.at(1),
+    }),
+    me,
+  );
+  run(
+    buildWrite({
+      ...callTerms,
+      writer: me.address,
+      expiry: chain.height + 50,
+      height: chain.height,
+      inputs: me.utxos.toArray(),
+    }),
+    me,
+  );
+  run(
+    buildWrite({
+      side: "put",
+      tokenId: SIGUSD,
+      amount: 100n,
+      strike: 400_000n,
+      premium: 1_000_000n,
+      writer: stranger.address,
+      expiry: chain.height + 500,
+      height: chain.height,
+      inputs: stranger.utxos.toArray(),
+    }),
+    stranger,
+  );
+
   const tokens: World["tokens"] = {};
   for (const t of tokenlist.tokens) tokens[t.id] = { name: t.name, decimals: t.decimals };
   tokens[P.tokens.stableCoinId] = { name: "SigUSD", decimals: 2 };
@@ -337,5 +401,5 @@ export function makeWorld() {
     tokens,
     submitted: [],
   };
-  return { chain, me, stranger, other, world, bonds, escrows, programs, programsSell };
+  return { chain, me, stranger, other, world, bonds, escrows, programs, programsSell, calls, puts };
 }
