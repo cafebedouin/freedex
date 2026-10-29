@@ -9,7 +9,8 @@ import { SByte, SColl, SConstant, SLong } from "@fleet-sdk/serializer";
 import { FEE } from "./orders.ts";
 
 /** The deployed tree, read from the explorer (46 boxes all time, 2026-10-29). */
-export const ESCROW_TREE = "100a0400040005d00f0580897a040404020400040004020400d809d601b2a5730000d602db63087201d603b2db6308a7730100d604e4c6a7040ed60593c272017204d606e4c6a70505d607a29d9c7206e4c6a7060573027303d608b2a5730400d609b2a5730500d1ecededededed91b17202730693b272027307007203720593e4c67201040ec5a793c2b2a4730800720492c17201c1a7edededededed720592c17201997206720793c27208e4c6a7070e92c17208720793e4c67201040ec5a793b2db63087209730900720393c27209e4c6a7080e";
+export const ESCROW_TREE =
+  "100a0400040005d00f0580897a040404020400040004020400d809d601b2a5730000d602db63087201d603b2db6308a7730100d604e4c6a7040ed60593c272017204d606e4c6a70505d607a29d9c7206e4c6a7060573027303d608b2a5730400d609b2a5730500d1ecededededed91b17202730693b272027307007203720593e4c67201040ec5a793c2b2a4730800720492c17201c1a7edededededed720592c17201997206720793c27208e4c6a7070e92c17208720793e4c67201040ec5a793b2db63087209730900720393c27209e4c6a7080e";
 
 export interface EscrowView {
   boxId: string;
@@ -74,7 +75,13 @@ export function buildCreateEscrow(p: CreateEscrowParams): EIP12UnsignedTransacti
       R7: coll(p.seller.ergoTree),
       R8: coll(p.buyer.ergoTree),
     });
-  return new TransactionBuilder(p.height).from(p.inputs).to(out).sendChangeTo(p.seller).payFee(FEE).build().toEIP12Object();
+  return new TransactionBuilder(p.height)
+    .from(p.inputs)
+    .to(out)
+    .sendChangeTo(p.seller)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
 export interface TakeEscrowParams {
@@ -89,11 +96,19 @@ export function buildTakeEscrow(p: TakeEscrowParams): EIP12UnsignedTransaction {
   const e = describeEscrow(p.escrowBox);
   if (p.buyer.encode() !== e.buyer) throw new Error("only the named buyer can take this escrow");
   const fee = escrowFee(e.price, e.feeRate);
-  const pay = new OutputBuilder(e.price - fee, ErgoAddress.fromErgoTree(treeHex(p.escrowBox.additionalRegisters.R4 as string)))
-    .setAdditionalRegisters({ R4: SColl(SByte, e.boxId).toHex() });
+  const pay = new OutputBuilder(
+    e.price - fee,
+    ErgoAddress.fromErgoTree(treeHex(p.escrowBox.additionalRegisters.R4 as string)),
+  ).setAdditionalRegisters({ R4: SColl(SByte, e.boxId).toHex() });
   const buy = new OutputBuilder(1_000_000n, p.buyer).addTokens({ tokenId: e.tokenId, amount: e.amount });
   const feeBox = new OutputBuilder(fee, e.feeTree);
-  return new TransactionBuilder(p.height).from([p.escrowBox, ...p.inputs]).to([pay, buy, feeBox]).sendChangeTo(p.buyer).payFee(FEE).build().toEIP12Object();
+  return new TransactionBuilder(p.height)
+    .from([p.escrowBox, ...p.inputs])
+    .to([pay, buy, feeBox])
+    .sendChangeTo(p.buyer)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
 export interface CancelEscrowParams {

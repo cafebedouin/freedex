@@ -7,9 +7,10 @@ import { blake2b256, hex } from "@fleet-sdk/crypto";
 import { serializeTransaction } from "@fleet-sdk/serializer";
 import { describePool } from "./amm.ts";
 import { buildBabelTake, describeBabel } from "./babel.ts";
+import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./bonds.ts";
 import type { Explorer } from "./explorer.ts";
 import { buildOrderTake } from "./machina-arb.ts";
-import { describe as describeOrder } from "./orders.ts";
+import { FEE, describe as describeOrder } from "./orders.ts";
 
 /** The deepest ERG pool per token id. */
 async function deepestPools(explorer: Explorer): Promise<Map<string, Box<bigint>>> {
@@ -99,13 +100,49 @@ export const ordersVsPool: UpkeepJob = {
 
 export const JOBS: UpkeepJob[] = [babelVsPool, ordersVsPool];
 
+/**
+ * Matured SigmaFi bonds whose lender is one of `addresses` and whose collateral is worth more than the miner fee:
+ * the liquidation path is keyless, but the fee must come from the lender's own boxes, so this is not a JOBS entry;
+ * the page builds `buildLiquidate` with the visitor's wallet when the visitor is that lender.
+ */
+export async function maturedBondsFor(
+  explorer: Explorer,
+  height: number,
+  addresses: string[],
+): Promise<{ box: Box<bigint>; v: BondView }[]> {
+  if (addresses.length === 0) return [];
+  const [b1, b2] = await Promise.all([
+    explorer.byTemplate(SIGMAFI_TEMPLATES.bondErg),
+    explorer.byTemplate(SIGMAFI_TEMPLATES.bondToken),
+  ]);
+  const out: { box: Box<bigint>; v: BondView }[] = [];
+  for (const box of [...b1, ...b2]) {
+    let v: BondView;
+    try {
+      v = describeBond(box);
+    } catch {
+      continue;
+    }
+    if (!addresses.includes(v.lender) || height < v.maturity) continue;
+    if (v.collateralTokens.length === 0 && BigInt(box.value) <= FEE) continue;
+    out.push({ box, v });
+  }
+  return out;
+}
+
 /** Node JSON for a transaction none of whose inputs needs a proof. */
 export function keylessJson(tx: EIP12UnsignedTransaction): { id: string; json: string } {
   // the id is the hash of the transaction without proofs, which is what the wallet-less transaction is
   const bytes = serializeTransaction({
     inputs: tx.inputs.map((i) => ({ boxId: i.boxId, extension: i.extension ?? {} })),
     dataInputs: tx.dataInputs.map((d) => ({ boxId: d.boxId })),
-    outputs: tx.outputs.map((o) => ({ value: o.value, ergoTree: o.ergoTree, creationHeight: o.creationHeight, assets: o.assets, additionalRegisters: o.additionalRegisters })),
+    outputs: tx.outputs.map((o) => ({
+      value: o.value,
+      ergoTree: o.ergoTree,
+      creationHeight: o.creationHeight,
+      assets: o.assets,
+      additionalRegisters: o.additionalRegisters,
+    })),
   }).toBytes();
   const id = hex.encode(blake2b256(bytes));
   const big = (v: string) => {
@@ -130,7 +167,11 @@ export function keylessJson(tx: EIP12UnsignedTransaction): { id: string; json: s
 }
 
 /** Run every job once; submit each candidate; report what happened. Candidates sharing an input are tried in order. */
-export async function runUpkeep(explorer: Explorer, payTo: ErgoAddress, log: (m: string) => void): Promise<{ found: number; submitted: string[] }> {
+export async function runUpkeep(
+  explorer: Explorer,
+  payTo: ErgoAddress,
+  log: (m: string) => void,
+): Promise<{ found: number; submitted: string[] }> {
   const height = await explorer.height();
   const submitted: string[] = [];
   let found = 0;
@@ -159,4 +200,3 @@ export async function runUpkeep(explorer: Explorer, payTo: ErgoAddress, log: (m:
   }
   return { found, submitted };
 }
-

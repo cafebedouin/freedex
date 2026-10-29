@@ -30,15 +30,19 @@ export function sizeOrderTake(pool: PoolView, order: OrderView, fee = FEE): Orde
   // the owner) still covers a box's minimum value, which the SDK checks
   const hiCap = intoOrder ? bmin((order.value - 100_000n) / order.price, pool.y - 1n) : order.tokenAmount;
   if (hiCap < 1n || order.price <= 0n) return undefined;
-  const poolLeg = (t: bigint) => (intoOrder ? ceilDiv(t * pool.x * 1000n, pool.feeNum * (pool.y - t)) : quote(pool, "token-to-erg", t));
+  const poolLeg = (t: bigint) =>
+    intoOrder ? ceilDiv(t * pool.x * 1000n, pool.feeNum * (pool.y - t)) : quote(pool, "token-to-erg", t);
   const profit = (t: bigint) => (intoOrder ? t * order.price - poolLeg(t) : poolLeg(t) - t * order.price);
-  let lo = 1n, hi = hiCap;
+  let lo = 1n,
+    hi = hiCap;
   while (hi - lo > 4n) {
-    const m1 = lo + (hi - lo) / 3n, m2 = hi - (hi - lo) / 3n;
+    const m1 = lo + (hi - lo) / 3n,
+      m2 = hi - (hi - lo) / 3n;
     if (profit(m1) < profit(m2)) lo = m1 + 1n;
     else hi = m2 - 1n;
   }
-  let best = 0n, bestProfit = -1n;
+  let best = 0n,
+    bestProfit = -1n;
   for (let k = lo - 4n > 1n ? lo - 4n : 1n; k <= hi + 4n && k <= hiCap; k++) {
     const p = profit(k);
     if (p > bestProfit) [best, bestProfit] = [k, p];
@@ -56,7 +60,9 @@ export interface OrderTakeParams {
   payTo: ErgoAddress;
 }
 
-export function buildOrderTake(p: OrderTakeParams): { tx: EIP12UnsignedTransaction; take: OrderTake; order: OrderView } | undefined {
+export function buildOrderTake(
+  p: OrderTakeParams,
+): { tx: EIP12UnsignedTransaction; take: OrderTake; order: OrderView } | undefined {
   const pool = describePool(p.poolBox);
   const order = describeOrder(p.orderBox);
   const take = sizeOrderTake(pool, order);

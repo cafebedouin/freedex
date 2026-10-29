@@ -4,7 +4,12 @@ import { ErgoTree } from "@fleet-sdk/core";
 import { hex, sha256 } from "@fleet-sdk/crypto";
 import { POOL_TREE, T2T_POOL_TREE } from "../src/amm";
 import { BABEL_TEMPLATE_SHA256 as BABEL_IN_BABEL, babelTree } from "../src/babel";
-import { BABEL_TEMPLATE_SHA256, E2T_LIMIT_TEMPLATE_SHA256, POOL_TEMPLATE_SHA256, T2T_POOL_TEMPLATE_SHA256 } from "../src/explorer";
+import {
+  BABEL_TEMPLATE_SHA256,
+  E2T_LIMIT_TEMPLATE_SHA256,
+  POOL_TEMPLATE_SHA256,
+  T2T_POOL_TEMPLATE_SHA256,
+} from "../src/explorer";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { ErgoAddress } from "@fleet-sdk/core";
 import { bondContract, orderContract, SIGMAFI_TEMPLATES } from "../src/bonds";
@@ -20,7 +25,12 @@ describe("template hashes match their trees", () => {
   });
   it("Machina E2T limit order", () => {
     const owner = ErgoAddress.fromBase58("9fRAWhdxEsTcdb8PhGNrZfwqa65zfkuYHAMmkQLcic1gdLSV5vA");
-    const tree = LimitOrder.create({ owner, type: "buy", price: 1n, assets: { base: { tokenId: "ERG", amount: 0n }, quote: { tokenId: "11".repeat(32), amount: 1n } } }).ergoTree;
+    const tree = LimitOrder.create({
+      owner,
+      type: "buy",
+      price: 1n,
+      assets: { base: { tokenId: "ERG", amount: 0n }, quote: { tokenId: "11".repeat(32), amount: 1n } },
+    }).ergoTree;
     expect(h(tree)).toBe(E2T_LIMIT_TEMPLATE_SHA256);
   });
   it("SigmaFi orders and bonds", () => {

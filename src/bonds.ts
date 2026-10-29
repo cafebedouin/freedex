@@ -17,7 +17,9 @@ export const UI_FEE_PER_100K = 400n;
 export const SIGMAFI_TEMPLATES = contracts.templateSha256;
 
 export function bondContract(tokenId: string): string {
-  return tokenId === ERG ? contracts.bondErg : contracts.bondTokenTemplate[0] + tokenId + contracts.bondTokenTemplate[1];
+  return tokenId === ERG
+    ? contracts.bondErg
+    : contracts.bondTokenTemplate[0] + tokenId + contracts.bondTokenTemplate[1];
 }
 
 /** The "on close" order contract (the term starts when a lender closes the order), ERG or token principal. */
@@ -122,18 +124,40 @@ export function buildOpenOrder(p: OpenOrderParams): EIP12UnsignedTransaction {
       R6: SLong(p.repayment).toHex(),
       R7: SInt(p.term).toHex(),
     });
-  return new TransactionBuilder(p.height).from(p.inputs).to(out).sendChangeTo(p.borrower).payFee(FEE).build().toEIP12Object();
+  return new TransactionBuilder(p.height)
+    .from(p.inputs)
+    .to(out)
+    .sendChangeTo(p.borrower)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
-export function buildCancelOrder(p: { height: number; inputs: Box<Amount>[]; borrower: ErgoAddress; orderBox: Box<Amount> }): EIP12UnsignedTransaction {
+export function buildCancelOrder(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  borrower: ErgoAddress;
+  orderBox: Box<Amount>;
+}): EIP12UnsignedTransaction {
   const o = describeOrder(p.orderBox);
   if (o.borrower !== p.borrower.encode()) throw new Error("only the borrower can cancel");
   const back = new OutputBuilder(BigInt(p.orderBox.value), p.borrower).addTokens(p.orderBox.assets);
-  return new TransactionBuilder(p.height).from([p.orderBox, ...p.inputs]).to(back).sendChangeTo(p.borrower).payFee(FEE).build().toEIP12Object();
+  return new TransactionBuilder(p.height)
+    .from([p.orderBox, ...p.inputs])
+    .to(back)
+    .sendChangeTo(p.borrower)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
 /** The lender closes the order: the bond at output 0, the principal to the borrower, the developer fee, the "UI fee" back to the lender. */
-export function buildLend(p: { height: number; inputs: Box<Amount>[]; lender: ErgoAddress; orderBox: Box<Amount> }): EIP12UnsignedTransaction {
+export function buildLend(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  lender: ErgoAddress;
+  orderBox: Box<Amount>;
+}): EIP12UnsignedTransaction {
   const o = describeOrder(p.orderBox);
   const isErg = o.principalId === ERG;
   const lenderProp = SSigmaProp(SGroupElement(p.lender.getPublicKeys()[0])).toHex();
@@ -148,29 +172,73 @@ export function buildLend(p: { height: number; inputs: Box<Amount>[]; lender: Er
       R8: lenderProp,
     });
   const borrower = ErgoAddress.fromBase58(o.borrower);
-  const loan = isErg ? new OutputBuilder(o.principal, borrower) : new OutputBuilder(SAFE_MIN_BOX_VALUE, borrower).addTokens({ tokenId: o.principalId, amount: o.principal });
-  const dev = devFee(o.principal), ui = uiFee(o.principal);
-  const devOut = isErg ? new OutputBuilder(dev, contracts.devFeeTree) : new OutputBuilder(SAFE_MIN_BOX_VALUE, contracts.devFeeTree).addTokens(dev > 0n ? [{ tokenId: o.principalId, amount: dev }] : []);
-  const uiOut = isErg ? new OutputBuilder(ui, p.lender) : new OutputBuilder(SAFE_MIN_BOX_VALUE, p.lender).addTokens(ui > 0n ? [{ tokenId: o.principalId, amount: ui }] : []);
-  return new TransactionBuilder(p.height).from([orderIn, ...p.inputs]).to([bond, loan, devOut, uiOut]).sendChangeTo(p.lender).payFee(FEE).build().toEIP12Object();
+  const loan = isErg
+    ? new OutputBuilder(o.principal, borrower)
+    : new OutputBuilder(SAFE_MIN_BOX_VALUE, borrower).addTokens({ tokenId: o.principalId, amount: o.principal });
+  const dev = devFee(o.principal),
+    ui = uiFee(o.principal);
+  const devOut = isErg
+    ? new OutputBuilder(dev, contracts.devFeeTree)
+    : new OutputBuilder(SAFE_MIN_BOX_VALUE, contracts.devFeeTree).addTokens(
+        dev > 0n ? [{ tokenId: o.principalId, amount: dev }] : [],
+      );
+  const uiOut = isErg
+    ? new OutputBuilder(ui, p.lender)
+    : new OutputBuilder(SAFE_MIN_BOX_VALUE, p.lender).addTokens(
+        ui > 0n ? [{ tokenId: o.principalId, amount: ui }] : [],
+      );
+  return new TransactionBuilder(p.height)
+    .from([orderIn, ...p.inputs])
+    .to([bond, loan, devOut, uiOut])
+    .sendChangeTo(p.lender)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
 /** The borrower repays: output 0 the repayment to the lender (R4 = bond id), output 1 the collateral back. */
-export function buildRepay(p: { height: number; inputs: Box<Amount>[]; borrower: ErgoAddress; bondBox: Box<Amount> }): EIP12UnsignedTransaction {
+export function buildRepay(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  borrower: ErgoAddress;
+  bondBox: Box<Amount>;
+}): EIP12UnsignedTransaction {
   const b = describeBond(p.bondBox);
   if (b.borrower !== p.borrower.encode()) throw new Error("only the borrower repays");
   const lender = ErgoAddress.fromBase58(b.lender);
-  const repayment = (b.principalId === ERG ? new OutputBuilder(b.repayment, lender) : new OutputBuilder(SAFE_MIN_BOX_VALUE, lender).addTokens({ tokenId: b.principalId, amount: b.repayment }))
-    .setAdditionalRegisters({ R4: SColl(SByte, b.boxId).toHex() });
+  const repayment = (
+    b.principalId === ERG
+      ? new OutputBuilder(b.repayment, lender)
+      : new OutputBuilder(SAFE_MIN_BOX_VALUE, lender).addTokens({ tokenId: b.principalId, amount: b.repayment })
+  ).setAdditionalRegisters({ R4: SColl(SByte, b.boxId).toHex() });
   const collateral = new OutputBuilder(BigInt(p.bondBox.value), p.borrower).addTokens(p.bondBox.assets);
-  return new TransactionBuilder(p.height).from([p.bondBox, ...p.inputs]).to([repayment, collateral]).sendChangeTo(p.borrower).payFee(FEE).build().toEIP12Object();
+  return new TransactionBuilder(p.height)
+    .from([p.bondBox, ...p.inputs])
+    .to([repayment, collateral])
+    .sendChangeTo(p.borrower)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }
 
 /** After maturity: the collateral to the lender (R4 = bond id) at output 0. */
-export function buildLiquidate(p: { height: number; inputs: Box<Amount>[]; recipient: ErgoAddress; bondBox: Box<Amount> }): EIP12UnsignedTransaction {
+export function buildLiquidate(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  recipient: ErgoAddress;
+  bondBox: Box<Amount>;
+}): EIP12UnsignedTransaction {
   const b = describeBond(p.bondBox);
   if (p.height < b.maturity) throw new Error(`the bond matures at ${b.maturity}`);
   const lender = ErgoAddress.fromBase58(b.lender);
-  const out = new OutputBuilder(BigInt(p.bondBox.value), lender).addTokens(p.bondBox.assets).setAdditionalRegisters({ R4: SColl(SByte, b.boxId).toHex() });
-  return new TransactionBuilder(p.height).from([p.bondBox, ...p.inputs]).to(out).sendChangeTo(p.recipient).payFee(FEE).build().toEIP12Object();
+  const out = new OutputBuilder(BigInt(p.bondBox.value), lender)
+    .addTokens(p.bondBox.assets)
+    .setAdditionalRegisters({ R4: SColl(SByte, b.boxId).toHex() });
+  return new TransactionBuilder(p.height)
+    .from([p.bondBox, ...p.inputs])
+    .to(out)
+    .sendChangeTo(p.recipient)
+    .payFee(FEE)
+    .build()
+    .toEIP12Object();
 }

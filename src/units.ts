@@ -16,7 +16,7 @@ export function formatUnits(x: bigint, decimals: number, maxFrac = decimals): st
   if (decimals === 0) s = x.toString();
   else {
     const t = x.toString().padStart(decimals + 1, "0");
-    let frac = t.slice(-decimals).slice(0, maxFrac).replace(/0+$/, "");
+    const frac = t.slice(-decimals).slice(0, maxFrac).replace(/0+$/, "");
     s = t.slice(0, -decimals) + (frac ? "." + frac : "");
   }
   return (neg ? "-" : "") + s;
@@ -32,6 +32,8 @@ export function ergPerTokenToPrice(text: string, decimals: number): bigint {
   const nano = parseUnits(text, ERG_DECIMALS);
   const unitsPerToken = 10n ** BigInt(decimals);
   if (nano % unitsPerToken !== 0n)
-    throw new Error(`price must be a multiple of ${formatUnits(unitsPerToken, ERG_DECIMALS)} ERG per token (the contract's price is an integer per smallest unit)`);
+    throw new Error(
+      `price must be a multiple of ${formatUnits(unitsPerToken, ERG_DECIMALS)} ERG per token (the contract's price is an integer per smallest unit)`,
+    );
   return nano / unitsPerToken;
 }

@@ -1,0 +1,6 @@
+# generated, vendored, or hand-laid-out: the contract bytes stay on one line and the page keeps its own layout
+dist/
+node_modules/
+package-lock.json
+*.json
+index.html

@@ -11,7 +11,8 @@ import { FEE } from "./orders.ts";
 export const INITIALLY_LOCKED_LP = 9_223_372_036_854_775_807n;
 
 /** The N2T pool ErgoTree, identical for every pool (269 of 269 on mainnet on 2026-10-29; scripts/pools.ts lists them). */
-export const POOL_TREE = "1999030f0400040204020404040405feffffffffffffffff0105feffffffffffffffff01050004d00f040004000406050005000580dac409d819d601b2a5730000d602e4c6a70404d603db63087201d604db6308a7d605b27203730100d606b27204730200d607b27203730300d608b27204730400d6099973058c720602d60a999973068c7205027209d60bc17201d60cc1a7d60d99720b720cd60e91720d7307d60f8c720802d6107e720f06d6117e720d06d612998c720702720fd6137e720c06d6147308d6157e721206d6167e720a06d6177e720906d6189c72117217d6199c72157217d1ededededededed93c27201c2a793e4c672010404720293b27203730900b27204730a00938c7205018c720601938c7207018c72080193b17203730b9593720a730c95720e929c9c721072117e7202069c7ef07212069a9c72137e7214067e9c720d7e72020506929c9c721372157e7202069c7ef0720d069a9c72107e7214067e9c72127e7202050695ed720e917212730d907216a19d721872139d72197210ed9272189c721672139272199c7216721091720b730e";
+export const POOL_TREE =
+  "1999030f0400040204020404040405feffffffffffffffff0105feffffffffffffffff01050004d00f040004000406050005000580dac409d819d601b2a5730000d602e4c6a70404d603db63087201d604db6308a7d605b27203730100d606b27204730200d607b27203730300d608b27204730400d6099973058c720602d60a999973068c7205027209d60bc17201d60cc1a7d60d99720b720cd60e91720d7307d60f8c720802d6107e720f06d6117e720d06d612998c720702720fd6137e720c06d6147308d6157e721206d6167e720a06d6177e720906d6189c72117217d6199c72157217d1ededededededed93c27201c2a793e4c672010404720293b27203730900b27204730a00938c7205018c720601938c7207018c72080193b17203730b9593720a730c95720e929c9c721072117e7202069c7ef07212069a9c72137e7214067e9c720d7e72020506929c9c721372157e7202069c7ef0720d069a9c72107e7214067e9c72127e7202050695ed720e917212730d907216a19d721872139d72197210ed9272189c721672139272199c7216721091720b730e";
 /** SHA-256 of its template, what the explorer's unspent search takes. */
 export const POOL_TEMPLATE_SHA256 = "2dcc7830afe8f355b945850c60ff2b41fdb3e8ade07fde0a7c8a3ec498e8c3f6";
 
@@ -61,7 +62,8 @@ export function priceImpactBps(p: PoolView, dir: SwapDirection, amountIn: bigint
   const out = quote(p, dir, amountIn);
   if (out === 0n) return 0n;
   // spot: y per x, or x per y, scaled by the input amount, with the fee applied, minus the realised out
-  const spotOut = dir === "erg-to-token" ? (p.y * amountIn * p.feeNum) / (p.x * 1000n) : (p.x * amountIn * p.feeNum) / (p.y * 1000n);
+  const spotOut =
+    dir === "erg-to-token" ? (p.y * amountIn * p.feeNum) / (p.x * 1000n) : (p.x * amountIn * p.feeNum) / (p.y * 1000n);
   if (spotOut === 0n) return 0n;
   return ((spotOut - out) * 10_000n) / spotOut;
 }
@@ -186,7 +188,8 @@ export function buildRedeem(p: RedeemParams): EIP12UnsignedTransaction {
   const pool = describePool(p.poolBox);
   const { ergOut, tokenOut } = redeemQuote(pool, p.lpIn);
   if (ergOut <= 0n && tokenOut <= 0n) throw new Error("the redemption is too small to return anything");
-  if (pool.x - ergOut <= POOL_MIN_VALUE) throw new Error("the redemption would take the pool to its minimum ERG or below");
+  if (pool.x - ergOut <= POOL_MIN_VALUE)
+    throw new Error("the redemption would take the pool to its minimum ERG or below");
   const successor = new OutputBuilder(pool.x - ergOut, POOL_TREE)
     .addTokens([
       { tokenId: pool.nft, amount: 1n },
@@ -194,7 +197,10 @@ export function buildRedeem(p: RedeemParams): EIP12UnsignedTransaction {
       { tokenId: pool.tokenId, amount: pool.y - tokenOut },
     ])
     .setAdditionalRegisters({ R4: p.poolBox.additionalRegisters.R4 as string });
-  const received = new OutputBuilder(ergOut > 1_000_000n ? ergOut : 1_000_000n, p.user).addTokens({ tokenId: pool.tokenId, amount: tokenOut });
+  const received = new OutputBuilder(ergOut > 1_000_000n ? ergOut : 1_000_000n, p.user).addTokens({
+    tokenId: pool.tokenId,
+    amount: tokenOut,
+  });
   return new TransactionBuilder(p.height)
     .from([p.poolBox, ...p.inputs])
     .to([successor, received])
@@ -214,7 +220,8 @@ function min(a: bigint, b: bigint): bigint {
 // the chain disagrees, and the mock chain's evaluator showed it: `Cannot getReg[Int](4)` against a Long).
 
 /** The T2T pool ErgoTree, identical for every pool (281 of 281 on mainnet on 2026-10-29; scripts/t2t-pools.ts lists them). */
-export const T2T_POOL_TREE = "19a9030f040004020402040404040406040605feffffffffffffffff0105feffffffffffffffff01050004d00f0400040005000500d81ad601b2a5730000d602e4c6a70404d603db63087201d604db6308a7d605b27203730100d606b27204730200d607b27203730300d608b27204730400d609b27203730500d60ab27204730600d60b9973078c720602d60c999973088c720502720bd60d8c720802d60e998c720702720dd60f91720e7309d6108c720a02d6117e721006d6127e720e06d613998c7209027210d6147e720d06d615730ad6167e721306d6177e720c06d6187e720b06d6199c72127218d61a9c72167218d1edededededed93c27201c2a793e4c672010404720292c17201c1a793b27203730b00b27204730c00938c7205018c720601ed938c7207018c720801938c7209018c720a019593720c730d95720f929c9c721172127e7202069c7ef07213069a9c72147e7215067e9c720e7e72020506929c9c721472167e7202069c7ef0720e069a9c72117e7215067e9c72137e7202050695ed720f917213730e907217a19d721972149d721a7211ed9272199c7217721492721a9c72177211";
+export const T2T_POOL_TREE =
+  "19a9030f040004020402040404040406040605feffffffffffffffff0105feffffffffffffffff01050004d00f0400040005000500d81ad601b2a5730000d602e4c6a70404d603db63087201d604db6308a7d605b27203730100d606b27204730200d607b27203730300d608b27204730400d609b27203730500d60ab27204730600d60b9973078c720602d60c999973088c720502720bd60d8c720802d60e998c720702720dd60f91720e7309d6108c720a02d6117e721006d6127e720e06d613998c7209027210d6147e720d06d615730ad6167e721306d6177e720c06d6187e720b06d6199c72127218d61a9c72167218d1edededededed93c27201c2a793e4c672010404720292c17201c1a793b27203730b00b27204730c00938c7205018c720601ed938c7207018c720801938c7209018c720a019593720c730d95720f929c9c721172127e7202069c7ef07213069a9c72147e7215067e9c720e7e72020506929c9c721472167e7202069c7ef0720e069a9c72117e7215067e9c72137e7202050695ed720f917213730e907217a19d721972149d721a7211ed9272199c7217721492721a9c72177211";
 export const T2T_POOL_TEMPLATE_SHA256 = "3c09deff3b5f49329149d18e02aab675ef6957bf6559a5c7dba817fee883fb3e";
 
 export interface T2TPoolView {
@@ -336,7 +343,13 @@ export function redeemQuoteT2T(p: T2TPoolView, lpIn: bigint): { xOut: bigint; yO
   return { xOut: (lpIn * p.x) / supply, yOut: (lpIn * p.y) / supply };
 }
 
-export function buildDepositT2T(p: { height: number; inputs: Box<Amount>[]; user: ErgoAddress; poolBox: Box<Amount>; xIn: bigint }): EIP12UnsignedTransaction {
+export function buildDepositT2T(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  user: ErgoAddress;
+  poolBox: Box<Amount>;
+  xIn: bigint;
+}): EIP12UnsignedTransaction {
   const pool = describeT2TPool(p.poolBox);
   const { yIn, lpOut } = depositQuoteT2T(pool, p.xIn);
   if (lpOut <= 0n) throw new Error("the deposit is too small to earn any LP token");
@@ -350,7 +363,13 @@ export function buildDepositT2T(p: { height: number; inputs: Box<Amount>[]; user
     .toEIP12Object();
 }
 
-export function buildRedeemT2T(p: { height: number; inputs: Box<Amount>[]; user: ErgoAddress; poolBox: Box<Amount>; lpIn: bigint }): EIP12UnsignedTransaction {
+export function buildRedeemT2T(p: {
+  height: number;
+  inputs: Box<Amount>[];
+  user: ErgoAddress;
+  poolBox: Box<Amount>;
+  lpIn: bigint;
+}): EIP12UnsignedTransaction {
   const pool = describeT2TPool(p.poolBox);
   const { xOut, yOut } = redeemQuoteT2T(pool, p.lpIn);
   if (xOut <= 0n && yOut <= 0n) throw new Error("the redemption is too small to return anything");

@@ -42,10 +42,10 @@
 <body>
   <header>
     <h1>FreeDEX <span class="muted">for Ergo</span></h1>
-    <div><select id="explorer-pick" class="small" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="wallet"></span></div>
+    <div><select id="explorer-pick" class="small" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="explorer-status" class="muted small"></span> <span id="wallet"></span></div>
   </header>
   <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
-  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool), builds those transactions with no signature and none of your funds, and sends the bounty to your address. <span id="upkeep-status" class="muted"></span></label></p>
+  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, it asks your wallet once to sign the transaction that hands you the collateral (you pay the miner fee). <span id="upkeep-status" class="muted"></span></label></p>
 
   <nav role="tablist">
     <button role="tab" data-tab="swap" aria-selected="true">Swap</button>
@@ -100,7 +100,7 @@
     </form>
 
     <h2 style="margin-top:1.5rem">Open limit orders</h2>
-    <p class="muted small">Every unspent Machina ERG-to-token limit order on mainnet, grouped by token, best price first on each side. Prices in ERG per whole token.</p>
+    <p class="muted small">Every unspent Machina ERG-to-token limit order on mainnet, and every EIP-31 Babel box (a standing bid you can sell tokens into, marked "Babel"), grouped by token, best price first on each side. Prices in ERG per whole token.</p>
     <div id="orders">loading…</div>
   </section>
 
@@ -136,7 +136,9 @@
 
   <section id="tab-bonds" hidden>
     <p class="muted small">SigmaFi peer-to-peer loans on its deployed contracts. A borrower locks collateral and names the principal, the repayment and the term; a lender funds it; the borrower repays before maturity or the lender takes the collateral after. The contract pays a 0.5% developer fee to SigmaFi's author on every loan, which the page shows and cannot remove; the contract's 0.4% "interface fee" is paid to the lender's own address here.</p>
-    <h2>Open loan requests</h2>
+    <h2>Your positions</h2>
+    <div id="bonds-mine">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Open loan requests</h2>
     <div id="orders-list">loading…</div>
     <h2 style="margin-top:1.25rem">Bonds</h2>
     <div id="bonds-list">loading…</div>
@@ -162,8 +164,10 @@
 
   <section id="tab-escrow" hidden>
     <p class="muted small">A token sale to one named buyer at an ERG price, on TokenJay's deployed escrow contract. The seller can cancel until the buyer pays. The contract demands a small "fee" box, which the page pays to the seller, so the sale costs the miner fee only.</p>
-    <h2>Escrows involving you</h2>
-    <div id="escrow-list">connect a wallet</div>
+    <h2>Your positions</h2>
+    <div id="escrow-mine">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Open escrows</h2>
+    <div id="escrow-list">loading…</div>
     <h2 style="margin-top:1.25rem">Offer tokens to a buyer</h2>
     <form id="create-escrow" class="grid">
       <label for="esc-buyer">Buyer address</label>
@@ -182,6 +186,10 @@
     <h2 style="margin-top:1.5rem">Log</h2>
     <div id="log"></div>
   </section>
+
+  <footer class="muted small" style="margin-top:1.5rem">
+    <a href="https://github.com/cafebedouin/freedex">Source on GitHub</a> (CC0): fork it, host it, read every builder.
+  </footer>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

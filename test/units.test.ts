@@ -23,7 +23,12 @@ describe("units", () => {
     expect(formatUnits(0n, 2)).toBe("0");
     expect(formatUnits(123456789n, 9, 3)).toBe("0.123");
     expect(formatUnits(-25n, 1)).toBe("-2.5");
-    for (const [t, d] of [["123.456", 3], ["0.01", 2], ["7", 0]] as const) expect(formatUnits(parseUnits(t, d), d)).toBe(t);
+    for (const [t, d] of [
+      ["123.456", 3],
+      ["0.01", 2],
+      ["7", 0],
+    ] as const)
+      expect(formatUnits(parseUnits(t, d), d)).toBe(t);
   });
   it("prices: nanoERG per unit against ERG per whole token", () => {
     expect(priceToErgPerToken(36_186n, 2)).toBe("0.0036186"); // FAKU, 2 decimals

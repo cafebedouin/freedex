@@ -20,22 +20,40 @@ const c = {
   bondTokenTemplate: block("TOKEN_BOND_CONTRACT_TEMPLATE"),
   devFeeTree: src.match(/CONTRACT_DEV_FEE_CONTRACT =\s*"([0-9a-f]+)"/)[1],
 };
-const dummyTok = "00".repeat(32), dummyHash = "11".repeat(32);
+const dummyTok = "00".repeat(32),
+  dummyHash = "11".repeat(32);
 const sample = {
   orderOnCloseErg: c.orderOnCloseErg,
   orderFixedErg: c.orderFixedErg,
   bondErg: c.bondErg,
-  orderOnCloseToken: c.orderOnCloseTokenTemplate[0] + dummyTok + c.orderOnCloseTokenTemplate[1] + dummyHash + c.orderOnCloseTokenTemplate[2],
-  orderFixedToken: c.orderFixedTokenTemplate[0] + dummyTok + c.orderFixedTokenTemplate[1] + dummyHash + c.orderFixedTokenTemplate[2],
+  orderOnCloseToken:
+    c.orderOnCloseTokenTemplate[0] +
+    dummyTok +
+    c.orderOnCloseTokenTemplate[1] +
+    dummyHash +
+    c.orderOnCloseTokenTemplate[2],
+  orderFixedToken:
+    c.orderFixedTokenTemplate[0] + dummyTok + c.orderFixedTokenTemplate[1] + dummyHash + c.orderFixedTokenTemplate[2],
   bondToken: c.bondTokenTemplate[0] + dummyTok + c.bondTokenTemplate[1],
 };
 const templateSha256 = {};
 for (const [k, tree] of Object.entries(sample)) templateSha256[k] = hex.encode(sha256(new ErgoTree(tree).template));
-writeFileSync(new URL("../src/sigmafi-contracts.json", import.meta.url), JSON.stringify({ source: "capt-nemo429/sigmafi-ui src/offchain/plugins.ts (MIT), read 2026-10-29", ...c, templateSha256 }, null, 1));
+writeFileSync(
+  new URL("../src/sigmafi-contracts.json", import.meta.url),
+  JSON.stringify(
+    { source: "capt-nemo429/sigmafi-ui src/offchain/plugins.ts (MIT), read 2026-10-29", ...c, templateSha256 },
+    null,
+    1,
+  ),
+);
 console.log("wrote src/sigmafi-contracts.json");
 if (process.argv.includes("--count")) {
   for (const [k, h] of Object.entries(templateSha256)) {
-    const r = await fetch("https://api.ergoplatform.com/api/v1/boxes/unspent/search?limit=100", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ergoTreeTemplateHash: h }) });
+    const r = await fetch("https://api.ergoplatform.com/api/v1/boxes/unspent/search?limit=100", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ergoTreeTemplateHash: h }),
+    });
     const j = await r.json();
     console.log(k.padEnd(18), "tree", String(sample[k].length / 2).padStart(4), "B  sha256", h, " live:", j.total);
   }

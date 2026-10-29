@@ -27,8 +27,7 @@ export function storeExplorer(base: string | undefined) {
 }
 
 /** SHA-256 of the Machina E2T limit-order ErgoTree template (scripts/template-hash.mjs, 2026-10-29). */
-export const E2T_LIMIT_TEMPLATE_SHA256 =
-  "03ef002b73a894198c7c9a4332ba28ca000dc6c40cb801f0c719940d9a6a8f6b";
+export const E2T_LIMIT_TEMPLATE_SHA256 = "03ef002b73a894198c7c9a4332ba28ca000dc6c40cb801f0c719940d9a6a8f6b";
 
 interface ExplorerRegister {
   serializedValue: string;
@@ -80,6 +79,8 @@ export class Explorer {
   /** The base that answered last; starts as the one given. */
   base: string;
   readonly bases: string[];
+  /** Called when a different base answered than last time (the page shows a line when it is not the first). */
+  onBaseChange?: (base: string) => void;
   #cache = new Map<string, { at: number; value: unknown }>();
   constructor(base?: string, fallbacks: string[] = EXPLORERS) {
     this.base = base ?? fallbacks[0];
@@ -97,7 +98,10 @@ export class Explorer {
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
         if (res.status >= 500 || res.status === 429) throw new Error(`explorer ${res.status} on ${path}`);
-        this.base = base;
+        if (this.base !== base) {
+          this.base = base;
+          this.onBaseChange?.(base);
+        }
         return res;
       } catch (e) {
         last = e;
@@ -147,7 +151,11 @@ export class Explorer {
     });
     return r.items
       .filter((b) => b.assets.length === 3)
-      .map((b) => ({ box: toFleetBox(b), tokenName: b.assets[2].name ?? "", tokenDecimals: b.assets[2].decimals ?? 0 }));
+      .map((b) => ({
+        box: toFleetBox(b),
+        tokenName: b.assets[2].name ?? "",
+        tokenDecimals: b.assets[2].decimals ?? 0,
+      }));
   }
 
   /** The current box of one pool, by its NFT: fetched fresh right before a swap is built. */
@@ -179,6 +187,9 @@ export class Explorer {
 
   /** Every unspent EIP-31 Babel box, any token. */
   async babelBoxes(limit = 500): Promise<Box<bigint>[]> {
+    return this.#cached(`babel:${limit}`, () => this.#babelBoxes(limit));
+  }
+  async #babelBoxes(limit: number): Promise<Box<bigint>[]> {
     const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/search?limit=${limit}`, {
       method: "POST",
       body: JSON.stringify({ ergoTreeTemplateHash: BABEL_TEMPLATE_SHA256 }),
@@ -249,7 +260,13 @@ export function parseExact(text: string): unknown {
 }
 
 function t2tEntry(b: ExplorerBox): T2TPoolEntry {
-  return { box: toFleetBox(b), xName: b.assets[2].name ?? "", xDecimals: b.assets[2].decimals ?? 0, yName: b.assets[3].name ?? "", yDecimals: b.assets[3].decimals ?? 0 };
+  return {
+    box: toFleetBox(b),
+    xName: b.assets[2].name ?? "",
+    xDecimals: b.assets[2].decimals ?? 0,
+    yName: b.assets[3].name ?? "",
+    yDecimals: b.assets[3].decimals ?? 0,
+  };
 }
 
 export function toFleetBox(b: ExplorerBox): Box<bigint> {

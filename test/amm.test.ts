@@ -19,7 +19,14 @@ describe("direct swap on an N2T pool", () => {
 
   function seedPool(x: bigint, y: bigint, feeNum: number) {
     pool.addBalance(
-      { nanoergs: x, tokens: [{ tokenId: NFT, amount: 1n }, { tokenId: LP, amount: LP_MAX - 1_000_000n }, { tokenId: TOKEN, amount: y }] },
+      {
+        nanoergs: x,
+        tokens: [
+          { tokenId: NFT, amount: 1n },
+          { tokenId: LP, amount: LP_MAX - 1_000_000n },
+          { tokenId: TOKEN, amount: y },
+        ],
+      },
       { R4: SInt(feeNum).toHex() },
     );
   }
@@ -27,11 +34,20 @@ describe("direct swap on an N2T pool", () => {
   it("ERG to token at the pool's rule", () => {
     seedPool(1_000n * ERG, 50_000_000n, 997);
     user.addBalance({ nanoergs: 5n * ERG });
-    chain.addParty(user); chain.addParty(pool);
+    chain.addParty(user);
+    chain.addParty(pool);
     const p = describePool(pool.utxos.at(0));
     const out = quote(p, "erg-to-token", 1n * ERG);
     expect(out).toBe((50_000_000n * 1n * ERG * 997n) / (1_000n * ERG * 1000n + 1n * ERG * 997n));
-    const tx = buildSwap({ height: chain.height, inputs: user.utxos.toArray(), user: user.address, poolBox: pool.utxos.at(0), direction: "erg-to-token", amountIn: 1n * ERG, minOut: out });
+    const tx = buildSwap({
+      height: chain.height,
+      inputs: user.utxos.toArray(),
+      user: user.address,
+      poolBox: pool.utxos.at(0),
+      direction: "erg-to-token",
+      amountIn: 1n * ERG,
+      minOut: out,
+    });
     expect(chain.execute(tx, { signers: [user] })).toBe(true);
     expect(user.balance.tokens).toEqual([{ tokenId: TOKEN, amount: out }]);
     const after = describePool(pool.utxos.at(0));
@@ -43,10 +59,19 @@ describe("direct swap on an N2T pool", () => {
   it("token to ERG at the pool's rule", () => {
     seedPool(1_000n * ERG, 50_000_000n, 997);
     user.addBalance({ nanoergs: 1n * ERG, tokens: [{ tokenId: TOKEN, amount: 100_000n }] });
-    chain.addParty(user); chain.addParty(pool);
+    chain.addParty(user);
+    chain.addParty(pool);
     const p = describePool(pool.utxos.at(0));
     const out = quote(p, "token-to-erg", 100_000n);
-    const tx = buildSwap({ height: chain.height, inputs: user.utxos.toArray(), user: user.address, poolBox: pool.utxos.at(0), direction: "token-to-erg", amountIn: 100_000n, minOut: out });
+    const tx = buildSwap({
+      height: chain.height,
+      inputs: user.utxos.toArray(),
+      user: user.address,
+      poolBox: pool.utxos.at(0),
+      direction: "token-to-erg",
+      amountIn: 100_000n,
+      minOut: out,
+    });
     expect(chain.execute(tx, { signers: [user] })).toBe(true);
     expect(user.balance.tokens).toEqual([]);
     expect(user.balance.nanoergs).toBe(1n * ERG + out - FEE);
@@ -56,12 +81,22 @@ describe("direct swap on an N2T pool", () => {
   it("taking one token more than the rule allows is refused by the pool", () => {
     seedPool(1_000n * ERG, 50_000_000n, 997);
     user.addBalance({ nanoergs: 5n * ERG });
-    chain.addParty(user); chain.addParty(pool);
+    chain.addParty(user);
+    chain.addParty(pool);
     const p = describePool(pool.utxos.at(0));
     const out = quote(p, "erg-to-token", 1n * ERG);
-    const tx = buildSwap({ height: chain.height, inputs: user.utxos.toArray(), user: user.address, poolBox: pool.utxos.at(0), direction: "erg-to-token", amountIn: 1n * ERG, minOut: out });
+    const tx = buildSwap({
+      height: chain.height,
+      inputs: user.utxos.toArray(),
+      user: user.address,
+      poolBox: pool.utxos.at(0),
+      direction: "erg-to-token",
+      amountIn: 1n * ERG,
+      minOut: out,
+    });
     // move one token from the pool successor to the user's output
-    const succ = tx.outputs[0], mine = tx.outputs[1];
+    const succ = tx.outputs[0],
+      mine = tx.outputs[1];
     succ.assets[2].amount = (BigInt(succ.assets[2].amount) - 1n).toString();
     mine.assets[0].amount = (BigInt(mine.assets[0].amount) + 1n).toString();
     expect(chain.execute(tx, { signers: [user], throw: false })).toBe(false);
@@ -71,9 +106,20 @@ describe("direct swap on an N2T pool", () => {
   it("the slippage guard refuses a stale quote", () => {
     seedPool(1_000n * ERG, 50_000_000n, 997);
     user.addBalance({ nanoergs: 5n * ERG });
-    chain.addParty(user); chain.addParty(pool);
+    chain.addParty(user);
+    chain.addParty(pool);
     const p = describePool(pool.utxos.at(0));
     const out = quote(p, "erg-to-token", 1n * ERG);
-    expect(() => buildSwap({ height: chain.height, inputs: user.utxos.toArray(), user: user.address, poolBox: pool.utxos.at(0), direction: "erg-to-token", amountIn: 1n * ERG, minOut: out + 1n })).toThrow(/below the minimum/);
+    expect(() =>
+      buildSwap({
+        height: chain.height,
+        inputs: user.utxos.toArray(),
+        user: user.address,
+        poolBox: pool.utxos.at(0),
+        direction: "erg-to-token",
+        amountIn: 1n * ERG,
+        minOut: out + 1n,
+      }),
+    ).toThrow(/below the minimum/);
   });
 });

@@ -30,11 +30,18 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
   it("owner sells tokens: create, partial fill, full fill", () => {
     owner.addBalance({ nanoergs: 2n * ERG, tokens: [{ tokenId: TOKEN, amount: 100n }] });
     taker.addBalance({ nanoergs: 5n * ERG });
-    chain.addParty(owner); chain.addParty(taker); chain.addParty(contract);
+    chain.addParty(owner);
+    chain.addParty(taker);
+    chain.addParty(contract);
 
     const create = buildCreate({
-      height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,
-      side: "sell-tokens", quoteTokenId: TOKEN, price: 5_000_000n, tokenAmount: 100n,
+      height: chain.height,
+      inputs: owner.utxos.toArray(),
+      owner: owner.address,
+      side: "sell-tokens",
+      quoteTokenId: TOKEN,
+      price: 5_000_000n,
+      tokenAmount: 100n,
     });
     expect(chain.execute(create, { signers: [owner] })).toBe(true);
     expect(contract.utxos.length).toBe(1);
@@ -47,8 +54,11 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     const initialValue = order.value; // the SDK sizes a token order at the minimum for its bytes
 
     const partial = buildFill({
-      height: chain.height, inputs: taker.utxos.toArray(), taker: taker.address,
-      orderBox: contract.utxos.at(0), tokenAmount: 40n,
+      height: chain.height,
+      inputs: taker.utxos.toArray(),
+      taker: taker.address,
+      orderBox: contract.utxos.at(0),
+      tokenAmount: 40n,
     });
     expect(chain.execute(partial, { signers: [taker] })).toBe(true);
     expect(contract.utxos.length).toBe(1);
@@ -58,8 +68,11 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     expect(taker.balance.tokens).toEqual([{ tokenId: TOKEN, amount: 40n }]);
 
     const full = buildFill({
-      height: chain.height, inputs: taker.utxos.toArray(), taker: taker.address,
-      orderBox: contract.utxos.at(0), tokenAmount: 60n,
+      height: chain.height,
+      inputs: taker.utxos.toArray(),
+      taker: taker.address,
+      orderBox: contract.utxos.at(0),
+      tokenAmount: 60n,
     });
     expect(chain.execute(full, { signers: [taker] })).toBe(true);
     expect(contract.utxos.length).toBe(0);
@@ -71,11 +84,18 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
   it("owner buys tokens: create, taker sells into it, owner closes the rest", () => {
     owner.addBalance({ nanoergs: 3n * ERG });
     taker.addBalance({ nanoergs: 1n * ERG, tokens: [{ tokenId: TOKEN, amount: 50n }] });
-    chain.addParty(owner); chain.addParty(taker); chain.addParty(contract);
+    chain.addParty(owner);
+    chain.addParty(taker);
+    chain.addParty(contract);
 
     const create = buildCreate({
-      height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,
-      side: "buy-tokens", quoteTokenId: TOKEN, price: 10_000_000n, ergAmount: 1n * ERG,
+      height: chain.height,
+      inputs: owner.utxos.toArray(),
+      owner: owner.address,
+      side: "buy-tokens",
+      quoteTokenId: TOKEN,
+      price: 10_000_000n,
+      ergAmount: 1n * ERG,
     });
     expect(chain.execute(create, { signers: [owner] })).toBe(true);
     const order = view(contract.utxos.at(0));
@@ -84,8 +104,11 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     expect(capacity(order)).toBe(100n);
 
     const sell = buildFill({
-      height: chain.height, inputs: taker.utxos.toArray(), taker: taker.address,
-      orderBox: contract.utxos.at(0), tokenAmount: 30n,
+      height: chain.height,
+      inputs: taker.utxos.toArray(),
+      taker: taker.address,
+      orderBox: contract.utxos.at(0),
+      tokenAmount: 30n,
     });
     expect(chain.execute(sell, { signers: [taker] })).toBe(true);
     expect(contract.utxos.length).toBe(1);
@@ -94,7 +117,9 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
     expect(taker.balance.nanoergs).toBe(1n * ERG - FEE + 30n * 10_000_000n);
 
     const close = buildClose({
-      height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,
+      height: chain.height,
+      inputs: owner.utxos.toArray(),
+      owner: owner.address,
       orderBox: contract.utxos.at(0),
     });
     expect(chain.execute(close, { signers: [owner] })).toBe(true);
@@ -105,14 +130,23 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
   it("a taker cannot close someone else's order", () => {
     owner.addBalance({ nanoergs: 2n * ERG, tokens: [{ tokenId: TOKEN, amount: 10n }] });
     taker.addBalance({ nanoergs: 1n * ERG });
-    chain.addParty(owner); chain.addParty(taker); chain.addParty(contract);
+    chain.addParty(owner);
+    chain.addParty(taker);
+    chain.addParty(contract);
     const create = buildCreate({
-      height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,
-      side: "sell-tokens", quoteTokenId: TOKEN, price: 1_000_000n, tokenAmount: 10n,
+      height: chain.height,
+      inputs: owner.utxos.toArray(),
+      owner: owner.address,
+      side: "sell-tokens",
+      quoteTokenId: TOKEN,
+      price: 1_000_000n,
+      tokenAmount: 10n,
     });
     expect(chain.execute(create, { signers: [owner] })).toBe(true);
     const steal = buildClose({
-      height: chain.height, inputs: taker.utxos.toArray(), owner: taker.address,
+      height: chain.height,
+      inputs: taker.utxos.toArray(),
+      owner: taker.address,
       orderBox: contract.utxos.at(0),
     });
     expect(chain.execute(steal, { signers: [taker], throw: false })).toBe(false);
@@ -122,21 +156,34 @@ describe("dexpage builders on the Machina E2T limit-order contract", () => {
   it("an underpaying fill is refused by the contract", () => {
     owner.addBalance({ nanoergs: 2n * ERG, tokens: [{ tokenId: TOKEN, amount: 10n }] });
     taker.addBalance({ nanoergs: 1n * ERG });
-    chain.addParty(owner); chain.addParty(taker); chain.addParty(contract);
+    chain.addParty(owner);
+    chain.addParty(taker);
+    chain.addParty(contract);
     const create = buildCreate({
-      height: chain.height, inputs: owner.utxos.toArray(), owner: owner.address,
-      side: "sell-tokens", quoteTokenId: TOKEN, price: 1_000_000n, tokenAmount: 10n,
+      height: chain.height,
+      inputs: owner.utxos.toArray(),
+      owner: owner.address,
+      side: "sell-tokens",
+      quoteTokenId: TOKEN,
+      price: 1_000_000n,
+      tokenAmount: 10n,
     });
     expect(chain.execute(create, { signers: [owner] })).toBe(true);
     const fill = buildFill({
-      height: chain.height, inputs: taker.utxos.toArray(), taker: taker.address,
-      orderBox: contract.utxos.at(0), tokenAmount: 4n,
+      height: chain.height,
+      inputs: taker.utxos.toArray(),
+      taker: taker.address,
+      orderBox: contract.utxos.at(0),
+      tokenAmount: 4n,
     });
     // pay for 3 tokens, take 4: lower the recreated order's value by one token's price
     const idx = fill.inputs.findIndex((i) => i.boxId === contract.utxos.at(0).boxId);
     expect(idx).toBeGreaterThanOrEqual(0);
     const out = fill.outputs.find((o) => o.ergoTree === contract.utxos.at(0).ergoTree)!;
-    const cheated = { ...fill, outputs: fill.outputs.map((o) => (o === out ? { ...o, value: (BigInt(o.value) - 1_000_000n).toString() } : o)) };
+    const cheated = {
+      ...fill,
+      outputs: fill.outputs.map((o) => (o === out ? { ...o, value: (BigInt(o.value) - 1_000_000n).toString() } : o)),
+    };
     // keep the transaction balanced: hand the shaved nanoergs to the taker's change output
     const change = cheated.outputs.find((o) => o.ergoTree === taker.address.ergoTree)!;
     change.value = (BigInt(change.value) + 1_000_000n).toString();

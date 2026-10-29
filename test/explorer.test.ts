@@ -6,8 +6,12 @@ import raw from "./fixtures/pool-box.json?raw";
 
 describe("parseExact", () => {
   it("keeps a 2^63-scale amount exact and leaves other numbers alone", () => {
-    const text = '{"items":[{"value":23930988,"index":0,"assets":[{"tokenId":"aa","amount":9223372036854016340}]}],"total":1}';
-    const j = parseExact(text) as { items: { value: bigint; index: number; assets: { amount: bigint }[] }[]; total: number };
+    const text =
+      '{"items":[{"value":23930988,"index":0,"assets":[{"tokenId":"aa","amount":9223372036854016340}]}],"total":1}';
+    const j = parseExact(text) as {
+      items: { value: bigint; index: number; assets: { amount: bigint }[] }[];
+      total: number;
+    };
     expect(j.items[0].assets[0].amount).toBe(9223372036854016340n);
     expect(j.items[0].value).toBe(23930988n);
     expect(j.items[0].index).toBe(0);

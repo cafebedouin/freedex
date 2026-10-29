@@ -33,7 +33,8 @@ export interface BabelView {
 export function describeBabel(box: Box<Amount>): BabelView {
   const tokenId = box.ergoTree.slice(TOKEN_AT, TOKEN_AT + 64);
   if (box.ergoTree !== babelTree(tokenId)) throw new Error("not an EIP-31 Babel box");
-  const r4 = box.additionalRegisters.R4, r5 = box.additionalRegisters.R5;
+  const r4 = box.additionalRegisters.R4,
+    r5 = box.additionalRegisters.R5;
   if (!r4 || !r5) throw new Error("Babel box lacks R4 or R5");
   const tok = box.assets[0];
   if (tok && tok.tokenId !== tokenId) throw new Error("Babel box holds the wrong token");
@@ -79,11 +80,13 @@ export function sizeBabelTake(pool: PoolView, babel: BabelView, fee = FEE): Babe
   let hi = bmin(ceilDiv(cap, babel.bid), pool.y - 1n);
   if (hi < lo) return undefined;
   while (hi - lo > 4n) {
-    const m1 = lo + (hi - lo) / 3n, m2 = hi - (hi - lo) / 3n;
+    const m1 = lo + (hi - lo) / 3n,
+      m2 = hi - (hi - lo) / 3n;
     if (profit(m1) < profit(m2)) lo = m1 + 1n;
     else hi = m2 - 1n;
   }
-  let best = 0n, bestProfit = -1n;
+  let best = 0n,
+    bestProfit = -1n;
   for (let k = lo - 4n > 1n ? lo - 4n : 1n; k <= hi + 4n; k++) {
     if (k <= 0n || k >= pool.y) continue;
     const p = profit(k);
@@ -134,4 +137,48 @@ export function buildBabelTake(p: BabelTakeParams): { tx: EIP12UnsignedTransacti
     .build()
     .toEIP12Object();
   return { tx, take };
+}
+
+/** Tokens a taker can still sell into the box at its bid, leaving the keep. */
+export function babelCapacity(v: BabelView): bigint {
+  const cap = v.value - BABEL_KEEP;
+  return cap > 0n && v.bid > 0n ? cap / v.bid : 0n;
+}
+
+export interface FillBabelParams {
+  height: number;
+  /** the taker's boxes: the tokens come from here, the ERG goes to the change */
+  inputs: Box<Amount>[];
+  taker: ErgoAddress;
+  babelBox: Box<Amount>;
+  /** tokens sold into the box, in smallest units */
+  tokenAmount: bigint;
+}
+
+/**
+ * A taker sells tokens into a Babel box at its bid: the box is recreated at output 0 with the tokens added and
+ * tokenAmount * bid less ERG, which lands in the taker's change. The Babel input needs no signature; the taker's do.
+ */
+export function buildFillBabel(p: FillBabelParams): EIP12UnsignedTransaction {
+  const babel = describeBabel(p.babelBox);
+  if (p.tokenAmount <= 0n) throw new Error("tokenAmount must be a positive amount");
+  const cap = babelCapacity(babel);
+  if (p.tokenAmount > cap) throw new Error(`the Babel box pays for at most ${cap} units`);
+  const erg = p.tokenAmount * babel.bid;
+  const babelOut = new OutputBuilder(babel.value - erg, p.babelBox.ergoTree)
+    .addTokens({ tokenId: babel.tokenId, amount: babel.tokens + p.tokenAmount })
+    .setAdditionalRegisters({
+      R4: p.babelBox.additionalRegisters.R4 as string,
+      R5: p.babelBox.additionalRegisters.R5 as string,
+      R6: SColl(SByte, babel.boxId).toHex(),
+    });
+  const babelIn = new ErgoUnsignedInput(p.babelBox).setContextExtension({ 0: SInt(0) });
+  return new TransactionBuilder(p.height)
+    .from([babelIn, ...p.inputs])
+    .to(babelOut)
+    .sendChangeTo(p.taker)
+    .payFee(FEE)
+    .configureSelector((s) => s.ensureInclusion(p.babelBox.boxId))
+    .build()
+    .toEIP12Object();
 }

@@ -31,11 +31,19 @@ export interface BankQuote {
 }
 
 export function mintQuote(bank: SigmaUSDBank, coin: CoinType, amount: bigint): BankQuote {
-  return { erg: bank.getMintingCostFor(amount, coin, "total", FEE), allowed: bank.canMint(amount, coin), reserveRatioAfter: bank.getReserveRatioFor("minting", amount, coin) };
+  return {
+    erg: bank.getMintingCostFor(amount, coin, "total", FEE),
+    allowed: bank.canMint(amount, coin),
+    reserveRatioAfter: bank.getReserveRatioFor("minting", amount, coin),
+  };
 }
 
 export function redeemQuote(bank: SigmaUSDBank, coin: CoinType, amount: bigint): BankQuote {
-  return { erg: bank.getRedeemingAmountFor(amount, coin, "total", FEE), allowed: bank.canRedeem(amount, coin), reserveRatioAfter: bank.getReserveRatioFor("redeeming", amount, coin) };
+  return {
+    erg: bank.getRedeemingAmountFor(amount, coin, "total", FEE),
+    allowed: bank.canRedeem(amount, coin),
+    reserveRatioAfter: bank.getReserveRatioFor("redeeming", amount, coin),
+  };
 }
 
 export interface BankParams {

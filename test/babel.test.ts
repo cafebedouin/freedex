@@ -6,7 +6,9 @@ import { POOL_TREE, describePool } from "../src/amm";
 import { babelTree, buildBabelTake, describeBabel, sizeBabelTake } from "../src/babel";
 import { FEE } from "../src/orders";
 
-const NFT = "11".repeat(32), LP = "22".repeat(32), TOKEN = "33".repeat(32);
+const NFT = "11".repeat(32),
+  LP = "22".repeat(32),
+  TOKEN = "33".repeat(32);
 const ERG = 1_000_000_000n;
 const LP_MAX = 9_223_372_036_854_775_807n;
 
@@ -19,19 +21,40 @@ describe("keyless Babel take", () => {
   afterEach(() => chain.reset({ clearParties: true }));
 
   function seed(bid: bigint) {
-    pool.addBalance({ nanoergs: 1_000n * ERG, tokens: [{ tokenId: NFT, amount: 1n }, { tokenId: LP, amount: LP_MAX - 1_000_000n }, { tokenId: TOKEN, amount: 50_000_000n }] }, { R4: SInt(997).toHex() });
+    pool.addBalance(
+      {
+        nanoergs: 1_000n * ERG,
+        tokens: [
+          { tokenId: NFT, amount: 1n },
+          { tokenId: LP, amount: LP_MAX - 1_000_000n },
+          { tokenId: TOKEN, amount: 50_000_000n },
+        ],
+      },
+      { R4: SInt(997).toHex() },
+    );
     // pool price: 20,000 nanoERG per unit; the Babel bid sits above it
-    babel.addBalance({ nanoergs: 1n * ERG }, { R4: SSigmaProp(SGroupElement(owner.key.publicKey)).toHex(), R5: SLong(bid).toHex() });
-    chain.addParty(pool); chain.addParty(babel); chain.addParty(taker);
+    babel.addBalance(
+      { nanoergs: 1n * ERG },
+      { R4: SSigmaProp(SGroupElement(owner.key.publicKey)).toHex(), R5: SLong(bid).toHex() },
+    );
+    chain.addParty(pool);
+    chain.addParty(babel);
+    chain.addParty(taker);
   }
 
   it("takes the gap with no signature and pays the builder", () => {
     seed(30_000n);
-    const p = describePool(pool.utxos.at(0)), b = describeBabel(babel.utxos.at(0));
+    const p = describePool(pool.utxos.at(0)),
+      b = describeBabel(babel.utxos.at(0));
     expect(b.bid).toBe(30_000n);
     const size = sizeBabelTake(p, b)!;
     expect(size.payout).toBeGreaterThan(0n);
-    const built = buildBabelTake({ height: chain.height, poolBox: pool.utxos.at(0), babelBox: babel.utxos.at(0), payTo: taker.address })!;
+    const built = buildBabelTake({
+      height: chain.height,
+      poolBox: pool.utxos.at(0),
+      babelBox: babel.utxos.at(0),
+      payTo: taker.address,
+    })!;
     expect(chain.execute(built.tx, { signers: [] })).toBe(true);
     expect(taker.balance.nanoergs).toBe(size.payout);
     const b1 = describeBabel(babel.utxos.at(0));
@@ -45,12 +68,24 @@ describe("keyless Babel take", () => {
   it("finds nothing to take when the bid is below the pool", () => {
     seed(10_000n);
     expect(sizeBabelTake(describePool(pool.utxos.at(0)), describeBabel(babel.utxos.at(0)))).toBeUndefined();
-    expect(buildBabelTake({ height: chain.height, poolBox: pool.utxos.at(0), babelBox: babel.utxos.at(0), payTo: taker.address })).toBeUndefined();
+    expect(
+      buildBabelTake({
+        height: chain.height,
+        poolBox: pool.utxos.at(0),
+        babelBox: babel.utxos.at(0),
+        payTo: taker.address,
+      }),
+    ).toBeUndefined();
   });
 
   it("one nanoERG more for the taker is refused by the Babel script", () => {
     seed(30_000n);
-    const built = buildBabelTake({ height: chain.height, poolBox: pool.utxos.at(0), babelBox: babel.utxos.at(0), payTo: taker.address })!;
+    const built = buildBabelTake({
+      height: chain.height,
+      poolBox: pool.utxos.at(0),
+      babelBox: babel.utxos.at(0),
+      payTo: taker.address,
+    })!;
     built.tx.outputs[1].value = (BigInt(built.tx.outputs[1].value) - 1n).toString();
     built.tx.outputs[2].value = (BigInt(built.tx.outputs[2].value) + 1n).toString();
     expect(chain.execute(built.tx, { signers: [], throw: false })).toBe(false);

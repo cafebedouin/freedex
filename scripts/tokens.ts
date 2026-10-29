@@ -11,7 +11,19 @@ for (const p of pools) {
   if (v.x < MIN_ERG) continue;
   const cur = best.get(v.tokenId);
   if (!cur || BigInt(cur.poolErg) < v.x)
-    best.set(v.tokenId, { id: v.tokenId, name: p.tokenName, decimals: p.tokenDecimals, poolNft: v.nft, poolErg: v.x.toString() });
+    best.set(v.tokenId, {
+      id: v.tokenId,
+      name: p.tokenName,
+      decimals: p.tokenDecimals,
+      poolNft: v.nft,
+      poolErg: v.x.toString(),
+    });
 }
 const list = [...best.values()].sort((a, b) => (BigInt(b.poolErg) > BigInt(a.poolErg) ? 1 : -1));
-console.log(JSON.stringify({ generated: new Date().toISOString().slice(0, 10), minPoolErg: MIN_ERG.toString(), tokens: list }, null, 1));
+console.log(
+  JSON.stringify(
+    { generated: new Date().toISOString().slice(0, 10), minPoolErg: MIN_ERG.toString(), tokens: list },
+    null,
+    1,
+  ),
+);
