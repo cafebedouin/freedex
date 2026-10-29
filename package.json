@@ -1,0 +1,27 @@
+{
+  "name": "freedex",
+  "private": true,
+  "type": "module",
+  "description": "FreeDEX for Ergo: a self-hosted static page for Machina limit orders, built with Fleet in the browser, signed by your wallet",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit -p . && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@fleet-sdk/common": "0.10.0",
+    "@fleet-sdk/core": "0.12.0",
+    "@fleet-sdk/crypto": "0.11.0",
+    "@fleet-sdk/serializer": "0.11.0",
+    "@nautls/machinafi-sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "@fleet-sdk/mock-chain": "0.12.0",
+    "@nautilus-js/eip12-types": "^0.1.11",
+    "typescript": "5.9.3",
+    "vite": "8.3.5",
+    "vitest": "5.0.5"
+  }
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreeDEX for Ergo</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { margin: 0 auto; max-width: 64rem; padding: 1rem; line-height: 1.4; }
+    header { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    section { margin-top: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+    th, td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid #8884; vertical-align: top; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    code { font-size: .85em; }
+    form { display: grid; grid-template-columns: max-content 1fr; gap: .5rem .75rem; align-items: center; max-width: 36rem; }
+    form button { grid-column: 2; justify-self: start; }
+    button { padding: .35rem .8rem; }
+    #log { white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: .85rem; background: #8881; padding: .5rem; min-height: 2rem; }
+    .mine { font-weight: 600; }
+    .muted { opacity: .7; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>FreeDEX <span class="muted">for Ergo: Machina limit orders, self-hosted, no server</span></h1>
+    <div id="wallet"></div>
+  </header>
+
+  <section>
+    <h2>Open orders</h2>
+    <p class="muted">Every unspent E2T limit order on mainnet, read from the explorer by template hash. Prices are nanoERG per smallest token unit; amounts are shown with the token's decimals.</p>
+    <div id="orders">loading…</div>
+  </section>
+
+  <section>
+    <h2>Create an order</h2>
+    <form id="create">
+      <label for="side">You</label>
+      <select id="side" name="side">
+        <option value="sell-tokens">sell tokens for ERG</option>
+        <option value="buy-tokens">buy tokens with ERG</option>
+      </select>
+      <label for="token">Token id</label>
+      <input id="token" name="token" size="64" pattern="[0-9a-fA-F]{64}" required />
+      <label for="amount" id="amount-label">Token amount</label>
+      <input id="amount" name="amount" inputmode="decimal" required />
+      <label for="price">Price (ERG per token)</label>
+      <input id="price" name="price" inputmode="decimal" required />
+      <button type="submit">Build, sign in wallet, submit</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <div id="log"></div>
+  </section>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
