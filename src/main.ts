@@ -7,9 +7,15 @@ import {
 import { Explorer, type PoolEntry, type T2TPoolEntry, type TokenInfo } from "./explorer";
 import { FEE, buildClose, buildCreate, buildFill, capacity, describe, type OrderView, type OwnerSide } from "./orders";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "./units";
+import { SIGRSV_ID, SIGUSD_ID, buildMint as buildBankMint, buildRedeem as buildBankRedeem, coinOf, loadBank, mintQuote, redeemQuote as bankRedeemQuote } from "./bank";
+import type { SigmaUSDBank } from "@fleet-sdk/ageusd-plugin";
+import { SIGMAFI_TEMPLATES, buildCancelOrder, buildLend, buildLiquidate, buildOpenOrder, buildRepay, describeBond, describeOrder as describeLoanOrder, devFee } from "./bonds";
+import { ESCROW_TREE, buildCancelEscrow, buildCreateEscrow, buildTakeEscrow, describeEscrow } from "./escrow";
+import { ErgoAddress, ErgoTree } from "@fleet-sdk/core";
+import { hex, sha256 } from "@fleet-sdk/crypto";
 import { runUpkeep } from "./upkeep";
 import { availableWallets, connect, disconnect, signAndSubmit, utxos, type Wallet } from "./wallet";
-import tokenlist from "./tokenlist.json";
+import tokenlist from "./tokenlist.json" with { type: "json" };
 
 const explorer = new Explorer(import.meta.env.VITE_EXPLORER ?? undefined);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -43,8 +49,11 @@ async function tokenInfo(id: string): Promise<TokenInfo> {
 for (const b of document.querySelectorAll<HTMLButtonElement>("nav [role=tab]")) {
   b.onclick = () => {
     for (const o of document.querySelectorAll<HTMLButtonElement>("nav [role=tab]")) o.setAttribute("aria-selected", String(o === b));
-    for (const s of ["swap", "orders", "pool"]) $(`tab-${s}`).hidden = s !== b.dataset.tab;
+    for (const s of ["swap", "orders", "pool", "bank", "bonds", "escrow"]) $(`tab-${s}`).hidden = s !== b.dataset.tab;
     if (b.dataset.tab === "pool") renderPool();
+    if (b.dataset.tab === "bank") void renderBank();
+    if (b.dataset.tab === "bonds") void loadBonds();
+    if (b.dataset.tab === "escrow") void loadEscrows();
   };
 }
 
@@ -288,6 +297,22 @@ function renderQuote() {
   if (amountIn > 0n) {
     const out = quoteFn(amountIn);
     swapOut.value = formatUnits(out, outDec);
+    // the bank as the other venue for SigUSD and SigRSV against ERG: shown, never chosen for the user
+    const bankCoin = coinOf(fromId === ERG ? toId : fromId);
+    if (bank && bankCoin && (fromId === ERG || toId === ERG)) {
+      try {
+        if (fromId === ERG) {
+          // the pool gives `out` tokens for amountIn ERG; what would minting `out` tokens cost at the bank?
+          const q = mintQuote(bank, bankCoin, out);
+          rows.push(["Same tokens from the bank", q.allowed ? `${formatUnits(q.erg, ERG_DECIMALS)} ERG (${q.erg < amountIn ? "cheaper: use the Bank tab" : "dearer"})` : "not allowed now"]);
+        } else {
+          const q = bankRedeemQuote(bank, bankCoin, amountIn);
+          rows.push(["Same tokens to the bank", q.allowed ? `${formatUnits(q.erg, ERG_DECIMALS)} ERG (${q.erg > out ? "better: use the Bank tab" : "worse"})` : "not allowed now"]);
+        }
+      } catch {
+        /* no bank quote */
+      }
+    }
     const minOut = out - (out * slippageBps()) / 10_000n;
     rows.push(["You receive (estimate)", `${formatUnits(out, outDec)} ${nameOf(toId)}`]);
     rows.push(["Minimum after slippage", formatUnits(minOut, outDec)]);
@@ -714,6 +739,241 @@ $<HTMLFormElement>("create").onsubmit = async (ev) => {
   }
 };
 
+// ---- bank (SigmaUSD) ---------------------------------------------------------------------------
+
+let bank: SigmaUSDBank | undefined;
+
+async function renderBank() {
+  try {
+    bank = await loadBank(explorer);
+    const usdPerErg = bank.oracleRate; // nanoERG per cent
+    dl($("bank-info"), [
+      ["Oracle", `${formatUnits(usdPerErg * 100n, ERG_DECIMALS, 4)} ERG per USD`],
+      ["Reserve ratio", `${bank.reserveRatio}%`],
+      ["Reserves", `${formatUnits(bank.baseReserves, ERG_DECIMALS, 0)} ERG`],
+      ["SigUSD in circulation", formatUnits(bank.circulatingStableCoins, 2)],
+      ["SigRSV in circulation", bank.circulatingReserveCoins.toString()],
+      ["SigUSD price", `${formatUnits(bank.stableCoinPrice * 100n, ERG_DECIMALS, 4)} ERG`],
+      ["SigRSV price", `${formatUnits(bank.reserveCoinPrice, ERG_DECIMALS, 6)} ERG`],
+      ["Mintable now", `${formatUnits(bank.availableStableCoins, 2)} SigUSD, ${bank.availableReserveCoins} SigRSV`],
+    ]);
+    renderBankQuote();
+  } catch (e) {
+    dl($("bank-info"), [["Bank", err(e)]]);
+  }
+}
+
+function bankSelection(): { action: "mint" | "redeem"; coin: "stable" | "reserve"; tokenId: string; dec: number } {
+  const [action, coin] = $<HTMLSelectElement>("bank-action").value.split(":") as ["mint" | "redeem", "stable" | "reserve"];
+  return { action, coin, tokenId: coin === "stable" ? SIGUSD_ID : SIGRSV_ID, dec: coin === "stable" ? 2 : 0 };
+}
+
+function renderBankQuote() {
+  const btn = $<HTMLButtonElement>("bank-go");
+  btn.disabled = true;
+  const sel = bankSelection();
+  $("bank-amount-name").textContent = sel.coin === "stable" ? "SigUSD" : "SigRSV";
+  if (!bank) return;
+  try {
+    const text = $<HTMLInputElement>("bank-amount").value.trim();
+    if (!text) {
+      dl($("bank-quote"), []);
+      return;
+    }
+    const amount = parseUnits(text, sel.dec);
+    const q = sel.action === "mint" ? mintQuote(bank, sel.coin, amount) : bankRedeemQuote(bank, sel.coin, amount);
+    dl($("bank-quote"), [
+      [sel.action === "mint" ? "You pay (all fees in)" : "You receive (all fees out)", `${formatUnits(q.erg, ERG_DECIMALS)} ERG`],
+      ["Reserve ratio after", `${q.reserveRatioAfter}%`],
+      ["Allowed by the bank", q.allowed ? "yes" : "no (the ratio would leave the band)"],
+    ]);
+    btn.textContent = wallet ? (sel.action === "mint" ? "Mint" : "Redeem") : "Connect a wallet";
+    btn.disabled = !wallet || !q.allowed;
+  } catch (e) {
+    dl($("bank-quote"), [["Amount", err(e)]]);
+  }
+}
+
+$<HTMLSelectElement>("bank-action").onchange = renderBankQuote;
+$<HTMLInputElement>("bank-amount").oninput = renderBankQuote;
+$<HTMLButtonElement>("bank-go").onclick = async () => {
+  try {
+    const sel = bankSelection();
+    const amount = parseUnits($<HTMLInputElement>("bank-amount").value, sel.dec);
+    const fresh = await loadBank(explorer);
+    const build = sel.action === "mint" ? buildBankMint : buildBankRedeem;
+    await send((height, inputs) => build({ height, inputs, user: wallet!.changeAddress, bank: fresh, coin: sel.coin, amount }));
+    $<HTMLInputElement>("bank-amount").value = "";
+    setTimeout(() => void renderBank(), 3000);
+  } catch (e) {
+    log(`bank failed: ${err(e)}`);
+  }
+};
+
+// ---- bonds (SigmaFi) ---------------------------------------------------------------------------
+
+function amountText(id: string, units: bigint): string {
+  return `${formatUnits(units, decimalsOf(id))} ${nameOf(id)}`;
+}
+
+function collateralText(v: { collateralErg: bigint; collateralTokens: { tokenId: string; amount: bigint }[] }): string {
+  const parts: string[] = [];
+  if (v.collateralErg > 0n) parts.push(amountText(ERG, v.collateralErg));
+  for (const t of v.collateralTokens) parts.push(amountText(t.tokenId, t.amount));
+  return parts.join(" + ") || "none";
+}
+
+async function loadBonds() {
+  const me = wallet?.usedAddresses ?? [];
+  try {
+    const [o1, o2, b1, b2] = await Promise.all([
+      explorer.byTemplate(SIGMAFI_TEMPLATES.orderOnCloseErg), explorer.byTemplate(SIGMAFI_TEMPLATES.orderOnCloseToken),
+      explorer.byTemplate(SIGMAFI_TEMPLATES.bondErg), explorer.byTemplate(SIGMAFI_TEMPLATES.bondToken),
+    ]);
+    const height = await explorer.height();
+    const orders = [...o1, ...o2].flatMap((box) => { try { return [{ box, v: describeLoanOrder(box) }]; } catch { return []; } });
+    const bonds = [...b1, ...b2].flatMap((box) => { try { return [{ box, v: describeBond(box) }]; } catch { return []; } });
+    for (const { v } of [...orders, ...bonds]) for (const t of [v.principalId, ...v.collateralTokens.map((c) => c.tokenId)]) if (t !== ERG && !tokens.has(t)) await tokenInfo(t);
+
+    const ot = document.createElement("table");
+    ot.innerHTML = `<thead><tr><th>Principal</th><th>Repayment</th><th>Term</th><th>Collateral</th><th>Borrower</th><th></th></tr></thead>`;
+    const otb = document.createElement("tbody");
+    for (const { box, v } of orders.sort((a, b) => (b.v.principal > a.v.principal ? 1 : -1))) {
+      const tr = document.createElement("tr");
+      const mine = me.includes(v.borrower);
+      if (mine) tr.className = "mine";
+      const interest = v.principal > 0n ? Number(((v.repayment - v.principal) * 10_000n) / v.principal) / 100 : 0;
+      tr.innerHTML = `<td>${amountText(v.principalId, v.principal)}</td><td>${amountText(v.principalId, v.repayment)} (${interest}%)</td><td class="num">${v.term} blocks</td><td>${collateralText(v)}</td><td><code title="${v.borrower}">${v.borrower.slice(0, 6)}…</code>${mine ? " (you)" : ""}</td>`;
+      const td = document.createElement("td");
+      if (wallet) {
+        const b = document.createElement("button");
+        b.textContent = mine ? "cancel" : `lend (+${amountText(v.principalId, devFee(v.principal))} dev fee)`;
+        b.onclick = () =>
+          send((height, inputs) => (mine ? buildCancelOrder({ height, inputs, borrower: wallet!.changeAddress, orderBox: box }) : buildLend({ height, inputs, lender: wallet!.changeAddress, orderBox: box })))
+            .then(() => setTimeout(() => void loadBonds(), 3000))
+            .catch((e) => log(`${mine ? "cancel" : "lend"} failed: ${err(e)}`));
+        td.append(b);
+      }
+      tr.append(td);
+      otb.append(tr);
+    }
+    ot.append(otb);
+    $("orders-list").replaceChildren(orders.length ? ot : "no open loan requests");
+
+    const bt = document.createElement("table");
+    bt.innerHTML = `<thead><tr><th>Repayment</th><th>Matures</th><th>Collateral</th><th>Borrower</th><th>Lender</th><th></th></tr></thead>`;
+    const btb = document.createElement("tbody");
+    for (const { box, v } of bonds.sort((a, b) => a.v.maturity - b.v.maturity)) {
+      const tr = document.createElement("tr");
+      const borrower = me.includes(v.borrower), lender = me.includes(v.lender);
+      if (borrower || lender) tr.className = "mine";
+      const left = v.maturity - height;
+      tr.innerHTML = `<td>${amountText(v.principalId, v.repayment)}</td><td class="num">${v.maturity} (${left > 0 ? `${left} blocks left` : "matured"})</td><td>${collateralText(v)}</td><td><code title="${v.borrower}">${v.borrower.slice(0, 6)}…</code>${borrower ? " (you)" : ""}</td><td><code title="${v.lender}">${v.lender.slice(0, 6)}…</code>${lender ? " (you)" : ""}</td>`;
+      const td = document.createElement("td");
+      if (wallet && borrower && left > 0) {
+        const b = document.createElement("button");
+        b.textContent = "repay";
+        b.onclick = () => send((h, inputs) => buildRepay({ height: h, inputs, borrower: wallet!.changeAddress, bondBox: box })).then(() => setTimeout(() => void loadBonds(), 3000)).catch((e) => log(`repay failed: ${err(e)}`));
+        td.append(b);
+      }
+      if (wallet && left <= 0) {
+        const b = document.createElement("button");
+        b.textContent = lender ? "take collateral" : "hand collateral to the lender";
+        b.onclick = () => send((h, inputs) => buildLiquidate({ height: h, inputs, recipient: wallet!.changeAddress, bondBox: box })).then(() => setTimeout(() => void loadBonds(), 3000)).catch((e) => log(`liquidate failed: ${err(e)}`));
+        td.append(b);
+      }
+      tr.append(td);
+      btb.append(tr);
+    }
+    bt.append(btb);
+    $("bonds-list").replaceChildren(bonds.length ? bt : "no bonds");
+
+    const sel = $<HTMLSelectElement>("loan-token");
+    if (sel.options.length <= 1) for (const t of tokenlist.tokens) sel.append(new Option(t.name || t.id.slice(0, 8), t.id));
+  } catch (e) {
+    $("orders-list").textContent = `could not load: ${err(e)}`;
+  }
+}
+
+$<HTMLFormElement>("open-order").onsubmit = async (ev) => {
+  ev.preventDefault();
+  try {
+    const principalId = $<HTMLSelectElement>("loan-token").value;
+    const dec = decimalsOf(principalId);
+    const principal = parseUnits($<HTMLInputElement>("loan-amount").value, dec);
+    const repayment = parseUnits($<HTMLInputElement>("loan-repay").value, dec);
+    const term = Number($<HTMLInputElement>("loan-term").value);
+    const collErgText = $<HTMLInputElement>("loan-coll-erg").value.trim();
+    const collTok = $<HTMLInputElement>("loan-coll-token").value.trim().toLowerCase();
+    const collAmtText = $<HTMLInputElement>("loan-coll-amount").value.trim();
+    const collateralErg = collErgText ? parseUnits(collErgText, ERG_DECIMALS) : 0n;
+    const collateralTokens = collTok ? [{ tokenId: collTok, amount: parseUnits(collAmtText, (await tokenInfo(collTok)).decimals) }] : [];
+    if (collateralErg <= 0n && collateralTokens.length === 0) throw new Error("name some collateral");
+    await send((height, inputs) => buildOpenOrder({ height, inputs, borrower: wallet!.changeAddress, principalId, principal, repayment, term, collateralErg, collateralTokens }));
+    setTimeout(() => void loadBonds(), 3000);
+  } catch (e) {
+    log(`loan request failed: ${err(e)}`);
+  }
+};
+
+// ---- escrow (TokenJay's contract) --------------------------------------------------------------
+
+const ESCROW_TEMPLATE_SHA256 = hex.encode(sha256(new ErgoTree(ESCROW_TREE).template));
+
+async function loadEscrows() {
+  if (!wallet) {
+    $("escrow-list").textContent = "connect a wallet";
+    return;
+  }
+  const me = wallet.usedAddresses;
+  try {
+    const all = await explorer.byTemplate(ESCROW_TEMPLATE_SHA256);
+    const mine = all.flatMap((box) => { try { const v = describeEscrow(box); return me.includes(v.seller) || me.includes(v.buyer) ? [{ box, v }] : []; } catch { return []; } });
+    for (const { v } of mine) if (!tokens.has(v.tokenId)) await tokenInfo(v.tokenId);
+    const t = document.createElement("table");
+    t.innerHTML = `<thead><tr><th>Tokens</th><th>Price</th><th>Seller</th><th>Buyer</th><th></th></tr></thead>`;
+    const tb = document.createElement("tbody");
+    for (const { box, v } of mine) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${amountText(v.tokenId, v.amount)}</td><td class="num">${formatUnits(v.price, ERG_DECIMALS)} ERG</td><td><code title="${v.seller}">${v.seller.slice(0, 6)}…</code>${me.includes(v.seller) ? " (you)" : ""}</td><td><code title="${v.buyer}">${v.buyer.slice(0, 6)}…</code>${me.includes(v.buyer) ? " (you)" : ""}</td>`;
+      const td = document.createElement("td");
+      if (me.includes(v.buyer)) {
+        const b = document.createElement("button");
+        b.textContent = "pay and take";
+        b.onclick = () => send((h, inputs) => buildTakeEscrow({ height: h, inputs, buyer: wallet!.changeAddress, escrowBox: box })).then(() => setTimeout(() => void loadEscrows(), 3000)).catch((e) => log(`take failed: ${err(e)}`));
+        td.append(b, " ");
+      }
+      if (me.includes(v.seller)) {
+        const b = document.createElement("button");
+        b.textContent = "cancel";
+        b.onclick = () => send((h, inputs) => buildCancelEscrow({ height: h, inputs, seller: wallet!.changeAddress, escrowBox: box })).then(() => setTimeout(() => void loadEscrows(), 3000)).catch((e) => log(`cancel failed: ${err(e)}`));
+        td.append(b);
+      }
+      tr.append(td);
+      tb.append(tr);
+    }
+    t.append(tb);
+    $("escrow-list").replaceChildren(mine.length ? t : `none (${all.length} escrow${all.length === 1 ? "" : "s"} open on the contract in all)`);
+  } catch (e) {
+    $("escrow-list").textContent = `could not load: ${err(e)}`;
+  }
+}
+
+$<HTMLFormElement>("create-escrow").onsubmit = async (ev) => {
+  ev.preventDefault();
+  try {
+    const buyer = ErgoAddress.fromBase58($<HTMLInputElement>("esc-buyer").value.trim());
+    const tokenId = $<HTMLInputElement>("esc-token").value.trim().toLowerCase();
+    const t = await tokenInfo(tokenId);
+    const amount = parseUnits($<HTMLInputElement>("esc-amount").value, t.decimals);
+    const price = parseUnits($<HTMLInputElement>("esc-price").value, ERG_DECIMALS);
+    await send((height, inputs) => buildCreateEscrow({ height, inputs, seller: wallet!.changeAddress, buyer, tokenId, amount, price }));
+    setTimeout(() => void loadEscrows(), 3000);
+  } catch (e) {
+    log(`escrow failed: ${err(e)}`);
+  }
+};
+
 // ---- upkeep ------------------------------------------------------------------------------------
 
 const UPKEEP_EVERY_MS = 3 * 60 * 1000;
@@ -750,5 +1010,6 @@ $<HTMLInputElement>("upkeep-on").onchange = () => {
 
 renderWallet();
 void loadPools();
+void loadBank(explorer).then((b) => { bank = b; renderQuote(); }).catch((e) => log(`bank: ${err(e)}`));
 void loadOrders();
 explorer.height().then((h) => log(`explorer ${explorer.base}, height ${h}`)).catch((e) => log(`explorer: ${err(e)}`));

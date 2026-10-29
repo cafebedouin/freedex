@@ -21,6 +21,15 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   rule. Type either side of a deposit and the other fills in at the pool's ratio. LP tokens are plain tokens in your
   wallet.
 
+- **Bank**: mint or redeem SigUSD and SigRSV directly against the SigmaUSD bank at the oracle price, through Fleet's
+  AgeUSD plugin with no implementor fee. The bank's own 2% protocol fee applies. The Swap tab quotes the bank beside
+  the pool for these two tokens and says which is better; it never picks for you.
+- **Bonds**: SigmaFi peer-to-peer loans on their deployed contracts. Request a loan against collateral, fund one,
+  repay before maturity, or take the collateral after. SigmaFi's contract pays a 0.5% developer fee to its author on
+  every loan, which the page shows and cannot remove; the contract's 0.4% "interface fee" is paid to the lender's own
+  address here, so it returns to them.
+- **Escrow**: a token sale to one named buyer at an ERG price on TokenJay's deployed escrow contract. The contract
+  demands a small fee box, which the page pays to the seller, so a sale costs the miner fee only.
 - **Chain upkeep while you are here.** With a wallet connected, the page looks every few minutes for boxes anyone
   may act on for a bounty, builds those transactions with no signature and none of your funds, submits them through
   the explorer, and sends the bounty to your address. Today's jobs: Babel bids (EIP-31) priced above their token's
@@ -47,7 +56,8 @@ Your keys stay in your wallet.
 
 So a FreeDEX swap costs the pool's fee plus 0.001 ERG. Nothing else, and nothing to anyone running the page. The
 other column describes the proxy-order design (an order box executed by an off-chain bot), not any one site's
-numbers.
+numbers. Where a protocol's own contract carries a fee (SigmaFi's 0.5% to its developer, the SigmaUSD bank's 2%),
+the page shows it; it adds none of its own anywhere.
 
 ## Use it
 
@@ -75,6 +85,8 @@ contents of `dist/`.
 - `src/orders.ts`: the limit-order builders (`buildCreate`, `buildFill`, `buildClose`) and `describe` for display.
 - `src/explorer.ts`: height, token metadata, pools and open orders by ErgoTree template hash, with amounts parsed as
   exact integers (every pool's LP token amount is past what a JavaScript number holds).
+- `src/bank.ts`, `src/bonds.ts`, `src/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay escrow on their
+  deployed contracts; `src/sigmafi-contracts.json` holds SigmaFi's contract hex as extracted from its MIT source.
 - `src/babel.ts`, `src/machina-arb.ts`, `src/upkeep.ts`: the keyless takes (sizing against the pool's rule, no
   signature) and the job runner.
 - `src/wallet.ts`: EIP-12 connect, balances, UTXOs, sign and submit.
@@ -89,7 +101,8 @@ contents of `dist/`.
   arithmetic the pool script checks. The pool is re-read right before the transaction is built.
 - Limit orders: the contract's price is an integer in nanoERG per smallest token unit. The page shows ERG per whole
   token and refuses a price it would have to round. Orders are labelled by what the taker does, as the contract does.
-- Not yet: token-to-token limit orders, grid orders, a mobile (ErgoPay) signing path, multi-hop swaps in one go.
+- Not yet: token-to-token limit orders, grid orders, a mobile (ErgoPay) signing path, multi-hop swaps in one go,
+  Duckpools borrowing, the clocked box (DCA, tranche sales) and the timed-escrow option, which are chartered.
 - A deposit needs tokens at the pool's ratio; the page computes the token amount from the ERG amount and tells you
   if the wallet is short before anything is signed.
 
@@ -113,6 +126,9 @@ pocket change: this is days old.
 | remove liquidity, the LP tokens back | `fd30f0e688047b91dc3461ee322ae9dbcb65bbaf4c3ebdd1196cc80742e0f4aa` |
 | token-to-token swap, FAKU to CYPX | `643be27f7a2f28a81d88a3297a8107eff790bd05fda26af21249acd7558eb2c5` |
 | keyless upkeep: a live Babel bid taken through the explorer, no signature | `43f5fe4560ad967619c8dc9bcdcc23db641f715f8c828fd82f37d75c2ec214cb` |
+| escrow: offer 10 FAKU to a named buyer, then the buyer takes it | `d9d8b0af26deb343b527f5dc8ef47655b96c67a0c75f09568bf851f904b34371`, `10017e3b141bc114c73e9d9d934213a97bc193cd7c050f0b455e24da53c22a95` |
+| bonds: request a loan, fund it, repay it before maturity | `887902b55bea59e86cdab33bebd830d7f85f098a5932759dba3cf11152e9814f`, `ae235887046f36450bbfe25974b280660a14001949fb3693510e655a0e479635`, `24a2be9d647edc06158e88ac8a00157192b8674cda149fc471277a8d36087c46` |
+| bank: mint 100 SigRSV, redeem 0.05 SigUSD | `c9feee3d5b22a692cfe3c4c50f28960089b2852d8350a029f8079e50705a3c6a`, `96478f1bb4f2e36891ff16e126c9f2ee675d6f49ae46e641237c1b1f0a0a29d0` |
 
 ## Licence
 

@@ -50,6 +50,9 @@
     <button role="tab" data-tab="swap" aria-selected="true">Swap</button>
     <button role="tab" data-tab="orders" aria-selected="false">Limit orders</button>
     <button role="tab" data-tab="pool" aria-selected="false">Pool</button>
+    <button role="tab" data-tab="bank" aria-selected="false">Bank</button>
+    <button role="tab" data-tab="bonds" aria-selected="false">Bonds</button>
+    <button role="tab" data-tab="escrow" aria-selected="false">Escrow</button>
   </nav>
 
   <section id="tab-swap">
@@ -116,6 +119,62 @@
       <button class="primary" id="lp-remove" disabled>Remove liquidity</button>
       <p class="muted small">Deposits and redemptions go straight to the pool box in one transaction at the pool's own rule (Pool.sc: a deposit earns at most min(ΔERG, Δtoken) of the supply, pro rata; a redemption returns your share). LP tokens are plain tokens in your wallet. Miner fee 0.001 ERG, nothing else.</p>
     </div>
+  </section>
+
+  <section id="tab-bank" hidden>
+    <div class="panel">
+      <h2>SigmaUSD bank</h2>
+      <p class="muted small">Mint or redeem SigUSD and SigRSV directly against the bank at the oracle price. The bank's own 2% protocol fee applies; the page adds nothing. Minting SigUSD is allowed while the reserve ratio stays above 400%, minting SigRSV while it stays below 800%.</p>
+      <dl id="bank-info">loading…</dl>
+      <div class="row"><select id="bank-action"><option value="mint:stable">mint SigUSD</option><option value="redeem:stable">redeem SigUSD</option><option value="mint:reserve">mint SigRSV</option><option value="redeem:reserve">redeem SigRSV</option></select><span></span></div>
+      <div class="row"><input type="text" id="bank-amount" inputmode="decimal" placeholder="amount" autocomplete="off" /><span id="bank-amount-name">SigUSD</span></div>
+      <dl id="bank-quote"></dl>
+      <button class="primary" id="bank-go" disabled>Go</button>
+    </div>
+  </section>
+
+  <section id="tab-bonds" hidden>
+    <p class="muted small">SigmaFi peer-to-peer loans on its deployed contracts. A borrower locks collateral and names the principal, the repayment and the term; a lender funds it; the borrower repays before maturity or the lender takes the collateral after. The contract pays a 0.5% developer fee to SigmaFi's author on every loan, which the page shows and cannot remove; the contract's 0.4% "interface fee" is paid to the lender's own address here.</p>
+    <h2>Open loan requests</h2>
+    <div id="orders-list">loading…</div>
+    <h2 style="margin-top:1.25rem">Bonds</h2>
+    <div id="bonds-list">loading…</div>
+    <h2 style="margin-top:1.25rem">Request a loan</h2>
+    <form id="open-order" class="grid">
+      <label for="loan-token">Principal</label>
+      <select id="loan-token"><option value="ERG">ERG</option></select>
+      <label for="loan-amount">Amount</label>
+      <input id="loan-amount" inputmode="decimal" required />
+      <label for="loan-repay">Repayment</label>
+      <input id="loan-repay" inputmode="decimal" required />
+      <label for="loan-term">Term (blocks, about 720 a day)</label>
+      <input id="loan-term" inputmode="numeric" value="7200" required />
+      <label for="loan-coll-erg">Collateral ERG</label>
+      <input id="loan-coll-erg" inputmode="decimal" placeholder="0" />
+      <label for="loan-coll-token">Collateral token id</label>
+      <input id="loan-coll-token" size="64" placeholder="optional" />
+      <label for="loan-coll-amount">Collateral token amount</label>
+      <input id="loan-coll-amount" inputmode="decimal" placeholder="optional" />
+      <button type="submit">Build, sign in wallet, submit</button>
+    </form>
+  </section>
+
+  <section id="tab-escrow" hidden>
+    <p class="muted small">A token sale to one named buyer at an ERG price, on TokenJay's deployed escrow contract. The seller can cancel until the buyer pays. The contract demands a small "fee" box, which the page pays to the seller, so the sale costs the miner fee only.</p>
+    <h2>Escrows involving you</h2>
+    <div id="escrow-list">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Offer tokens to a buyer</h2>
+    <form id="create-escrow" class="grid">
+      <label for="esc-buyer">Buyer address</label>
+      <input id="esc-buyer" size="64" required />
+      <label for="esc-token">Token id</label>
+      <input id="esc-token" size="64" pattern="[0-9a-fA-F]{64}" required />
+      <label for="esc-amount">Token amount</label>
+      <input id="esc-amount" inputmode="decimal" required />
+      <label for="esc-price">Price (ERG)</label>
+      <input id="esc-price" inputmode="decimal" required />
+      <button type="submit">Build, sign in wallet, submit</button>
+    </form>
   </section>
 
   <section>

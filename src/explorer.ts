@@ -122,6 +122,21 @@ export class Explorer {
     return r.items.map(toFleetBox);
   }
 
+  /** Unspent boxes under any ErgoTree template, by its SHA-256. */
+  async byTemplate(templateSha256: string, limit = 200): Promise<Box<bigint>[]> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/search?limit=${limit}`, {
+      method: "POST",
+      body: JSON.stringify({ ergoTreeTemplateHash: templateSha256 }),
+    });
+    return r.items.map(toFleetBox);
+  }
+
+  /** Unspent boxes holding a token (a singleton's current box, for instance). */
+  async byToken(tokenId: string, limit = 5): Promise<Box<bigint>[]> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byTokenId/${tokenId}?limit=${limit}`);
+    return r.items.map(toFleetBox);
+  }
+
   /** Submit a transaction in node JSON form through the explorer's mempool endpoint; returns the id. */
   async submit(txJson: string): Promise<string> {
     const res = await fetch(`${this.base}/api/v1/mempool/transactions/submit`, {
