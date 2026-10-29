@@ -132,4 +132,5 @@ pocket change: this is days old.
 
 ## Licence
 
-MIT.
+CC0 1.0 Universal: this project's own code is dedicated to the public domain, the same dedication skunkyard uses. The
+SigmaFi-derived files keep their MIT notice; see `THIRD-PARTY-NOTICES.md`.
