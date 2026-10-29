@@ -44,6 +44,7 @@
     <div id="wallet"></div>
   </header>
   <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
+  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids above their pool, and more to come), builds those transactions with no signature and none of your funds, and sends the bounty to your address. <span id="upkeep-status" class="muted"></span></label></p>
 
   <nav role="tablist">
     <button role="tab" data-tab="swap" aria-selected="true">Swap</button>

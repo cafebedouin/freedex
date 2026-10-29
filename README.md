@@ -21,6 +21,14 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   rule. Type either side of a deposit and the other fills in at the pool's ratio. LP tokens are plain tokens in your
   wallet.
 
+- **Chain upkeep while you are here.** With a wallet connected, the page looks every few minutes for boxes anyone
+  may act on for a bounty, builds those transactions with no signature and none of your funds, submits them through
+  the explorer, and sends the bounty to your address. Today's jobs: Babel bids (EIP-31) priced above their token's
+  pool, and Machina limit orders priced across the pool, either side. Default on, one checkbox to turn off. It never
+  touches your own transaction, so a contended box costs you nothing but a log line. The same jobs run headless
+  from Node (`scripts/upkeep-run.ts <address>`), which is the sidecar for anyone who wants to keep the chain tidy
+  without a browser open.
+
 The swap and pool token lists are a static whitelist of tokens whose deepest pool held 100 ERG or more when the list
 was generated (`src/tokenlist.json`, `npm run tokens` to refresh), plus an "other token" entry for any token id.
 
@@ -67,6 +75,8 @@ contents of `dist/`.
 - `src/orders.ts`: the limit-order builders (`buildCreate`, `buildFill`, `buildClose`) and `describe` for display.
 - `src/explorer.ts`: height, token metadata, pools and open orders by ErgoTree template hash, with amounts parsed as
   exact integers (every pool's LP token amount is past what a JavaScript number holds).
+- `src/babel.ts`, `src/machina-arb.ts`, `src/upkeep.ts`: the keyless takes (sizing against the pool's rule, no
+  signature) and the job runner.
 - `src/wallet.ts`: EIP-12 connect, balances, UTXOs, sign and submit.
 - `src/units.ts`: decimal text to smallest units and back, exact.
 - `src/main.ts`, `index.html`: the page.
@@ -102,6 +112,7 @@ pocket change: this is days old.
 | add liquidity, 0.003 ERG + FAKU | `5eaa12e353aa67277823793ee7f3892193fe50fd93d7e26c3a8c8528a0747b17` |
 | remove liquidity, the LP tokens back | `fd30f0e688047b91dc3461ee322ae9dbcb65bbaf4c3ebdd1196cc80742e0f4aa` |
 | token-to-token swap, FAKU to CYPX | `643be27f7a2f28a81d88a3297a8107eff790bd05fda26af21249acd7558eb2c5` |
+| keyless upkeep: a live Babel bid taken through the explorer, no signature | `43f5fe4560ad967619c8dc9bcdcc23db641f715f8c828fd82f37d75c2ec214cb` |
 
 ## Licence
 

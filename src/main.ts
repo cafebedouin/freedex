@@ -7,6 +7,7 @@ import {
 import { Explorer, type PoolEntry, type T2TPoolEntry, type TokenInfo } from "./explorer";
 import { FEE, buildClose, buildCreate, buildFill, capacity, describe, type OrderView, type OwnerSide } from "./orders";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "./units";
+import { runUpkeep } from "./upkeep";
 import { availableWallets, connect, disconnect, signAndSubmit, utxos, type Wallet } from "./wallet";
 import tokenlist from "./tokenlist.json";
 
@@ -80,6 +81,7 @@ function renderWallet() {
       try {
         wallet = await connect(name);
         log(`connected ${name}, change address ${wallet.changeAddress.encode()}`);
+        scheduleUpkeep();
       } catch (e) {
         log(`connect failed: ${err(e)}`);
       }
@@ -710,6 +712,38 @@ $<HTMLFormElement>("create").onsubmit = async (ev) => {
   } catch (e) {
     log(`create failed: ${err(e)}`);
   }
+};
+
+// ---- upkeep ------------------------------------------------------------------------------------
+
+const UPKEEP_EVERY_MS = 3 * 60 * 1000;
+let upkeepTimer: number | undefined;
+let upkeepBusy = false;
+
+async function upkeepTick() {
+  const on = $<HTMLInputElement>("upkeep-on").checked;
+  const status = $("upkeep-status");
+  if (!on || !wallet || upkeepBusy) return;
+  upkeepBusy = true;
+  try {
+    const r = await runUpkeep(explorer, wallet.changeAddress, log);
+    status.textContent = `(last check ${new Date().toISOString().slice(11, 16)} UTC: ${r.found} due, ${r.submitted.length} submitted)`;
+  } catch (e) {
+    status.textContent = `(upkeep: ${err(e)})`;
+  } finally {
+    upkeepBusy = false;
+  }
+}
+
+function scheduleUpkeep() {
+  if (upkeepTimer) window.clearInterval(upkeepTimer);
+  upkeepTimer = window.setInterval(() => void upkeepTick(), UPKEEP_EVERY_MS);
+  void upkeepTick();
+}
+
+$<HTMLInputElement>("upkeep-on").onchange = () => {
+  $("upkeep-status").textContent = "";
+  if ($<HTMLInputElement>("upkeep-on").checked) scheduleUpkeep();
 };
 
 // ---- boot --------------------------------------------------------------------------------------

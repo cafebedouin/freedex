@@ -38,6 +38,9 @@ export interface T2TPoolEntry {
   yDecimals: number;
 }
 
+/** SHA-256 of the EIP-31 Babel template, the same for every token (scripts/babel-list.ts, 2026-10-29). */
+export const BABEL_TEMPLATE_SHA256 = "4e83fa68ef3ed9794bbab5d8799998a9e09fb10a0afe8d1bf928936dfd11c465";
+
 /** SHA-256 of the ErgoDEX v1 T2T pool template (scripts/t2t-pools.ts, 2026-10-29). */
 export const T2T_POOL_TEMPLATE_SHA256 = "3c09deff3b5f49329149d18e02aab675ef6957bf6559a5c7dba817fee883fb3e";
 
@@ -108,6 +111,32 @@ export class Explorer {
     const b = r.items.find((x) => x.assets.length === 4 && x.assets[0].tokenId === nft);
     if (!b) throw new Error("pool box not found");
     return t2tEntry(b);
+  }
+
+  /** Every unspent EIP-31 Babel box, any token. */
+  async babelBoxes(limit = 500): Promise<Box<bigint>[]> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/search?limit=${limit}`, {
+      method: "POST",
+      body: JSON.stringify({ ergoTreeTemplateHash: BABEL_TEMPLATE_SHA256 }),
+    });
+    return r.items.map(toFleetBox);
+  }
+
+  /** Submit a transaction in node JSON form through the explorer's mempool endpoint; returns the id. */
+  async submit(txJson: string): Promise<string> {
+    const res = await fetch(`${this.base}/api/v1/mempool/transactions/submit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: txJson,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`submit ${res.status}: ${text.slice(0, 200)}`);
+    try {
+      const j = JSON.parse(text) as { id?: string } | string;
+      return typeof j === "string" ? j : (j.id ?? text);
+    } catch {
+      return text.replace(/"/g, "");
+    }
   }
 
   txUrl(txId: string): string {
