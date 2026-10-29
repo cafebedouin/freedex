@@ -149,7 +149,7 @@ export function mountPool(store: Store) {
     const wallet = store.wallet;
     if (wallet) {
       try {
-        const lp = BigInt(await wallet.api.get_balance(lpTokenId));
+        const lp = await wallet.balance(lpTokenId);
         const [sa, sb] = share(lp);
         rows.push([
           "Your LP tokens",

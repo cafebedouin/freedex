@@ -123,7 +123,7 @@ export function mountSwap(store: Store) {
     const wallet = store.wallet;
     if (!wallet || !s.fromId) return;
     try {
-      const raw = BigInt(await wallet.api.get_balance(s.fromId));
+      const raw = await wallet.balance(s.fromId);
       const reserve = s.fromId === ERG ? FEE + 2_000_000n : 0n; // the fee, the received box, a change box that may carry tokens
       const max = raw > reserve ? raw - reserve : 0n;
       el.append(`balance ${formatUnits(raw, store.decimalsOf(s.fromId))} ${store.nameOf(s.fromId)} `);

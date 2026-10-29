@@ -212,6 +212,37 @@ export class Explorer {
     return r.items.map(toFleetBox);
   }
 
+  /** Unspent boxes at an address, newest first, as the phone signer's inputs. Not cached. */
+  async unspentByAddress(address: string, limit = 100): Promise<Box<bigint>[]> {
+    const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byAddress/${address}?limit=${limit}`);
+    return r.items.map(toFleetBox);
+  }
+
+  /** The last `n` block headers, newest first, as the explorer serves them; sigma-rust's binding parses them as is. */
+  async headers(n: number): Promise<unknown[]> {
+    const r = await this.#json<{ items: unknown[] }>(`/api/v1/blocks/headers?limit=${n}`);
+    return r.items;
+  }
+
+  /**
+   * Whether a transaction is in a block or in the mempool, by id. The mempool is only listed by address, so the
+   * address that signed is asked. A failing request counts as not seen: the caller polls.
+   */
+  async seen(txId: string, address: string): Promise<boolean> {
+    try {
+      const res = await this.#fetchAny(`/api/v1/transactions/${txId}`);
+      if (res.ok) return true;
+    } catch {
+      /* not seen yet */
+    }
+    try {
+      const r = await this.#json<{ items: { id: string }[] }>(`/api/v1/mempool/transactions/byAddress/${address}`);
+      return r.items.some((t) => t.id === txId);
+    } catch {
+      return false;
+    }
+  }
+
   /** Forget the listings, after a transaction of ours changes them. */
   invalidate() {
     this.#cache.clear();

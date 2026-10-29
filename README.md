@@ -91,7 +91,13 @@ to whoever runs it; the page adds none of its own there either.
 
 ## Use it
 
-Open the live page with Nautilus installed, connect, and trade. Or run it yourself:
+Open the live page with Nautilus installed, connect, and trade. Or sign from your phone: choose "sign with your
+phone" in the header, enter your mainnet address once (it stays in this browser), and the page reads your boxes and
+balances from the explorer. Each transaction is then reduced in the browser (sigma-rust's WASM binding, fetched only
+on this path) and shown as a QR code and an `ergopay:` link holding the whole reduced transaction, EIP-20's static
+mode: scan it with the Ergo mobile wallet (Terminus on iOS), check it there, sign; the wallet submits and the page
+watches the explorer for the id. No server is involved. A transaction too large for a QR code (above 2,800
+characters, which takes a dozen or more inputs) is refused with a note to consolidate boxes first. Or run it yourself:
 
 ```
 npm ci
@@ -142,7 +148,7 @@ contents of `dist/`.
   arithmetic the pool script checks. The pool is re-read right before the transaction is built.
 - Limit orders: the contract's price is an integer in nanoERG per smallest token unit. The page shows ERG per whole
   token and refuses a price it would have to round. Orders are labelled by what the taker does, as the contract does.
-- Not yet: token-to-token limit orders, grid orders, a mobile (ErgoPay) signing path, multi-hop swaps in one go,
+- Not yet: token-to-token limit orders, grid orders, multi-hop swaps in one go,
   Duckpools borrowing, options with a strike in a token (a SigUSD-denominated put).
 - Programs: the price cap or floor is an integer in nanoERG per smallest token unit, so a bound below one nanoERG
   per unit cannot be expressed. An executor may shorten one interval by at most 4 blocks (`SLACK`); intervals of a

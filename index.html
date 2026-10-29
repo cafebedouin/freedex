@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https:; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' https:; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>FreeDEX for Ergo</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; --line: #8884; --panel: #8881; }
@@ -11,7 +11,9 @@
     header { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; justify-content: space-between; }
     h1 { font-size: 1.25rem; margin: 0; }
     h2 { font-size: 1.05rem; margin: 0 0 .5rem; }
-    nav { display: flex; gap: .5rem; margin: 1rem 0; border-bottom: 1px solid var(--line); }
+    nav { display: flex; flex-wrap: wrap; gap: 0 .5rem; row-gap: .25rem; margin: 1rem 0; border-bottom: 1px solid var(--line); }
+    #ergopay canvas { display: block; max-width: 100%; height: auto; image-rendering: pixelated; margin: .5rem 0; }
+    #ergopay-link { word-break: break-all; }
     nav button { background: none; border: 0; border-bottom: 2px solid transparent; padding: .4rem .8rem; font: inherit; cursor: pointer; }
     nav button[aria-selected="true"] { border-bottom-color: currentColor; font-weight: 600; }
     section[hidden] { display: none; }
@@ -250,6 +252,13 @@
       <dl id="opt-quote" style="grid-column: 1 / -1"></dl>
       <button type="submit" id="opt-go" disabled>Build, sign in wallet, submit</button>
     </form>
+  </section>
+
+  <section id="ergopay" class="panel" hidden style="margin-top:1.5rem">
+    <h2>Sign on your phone</h2>
+    <p class="small">Scan the code with the Ergo mobile wallet (Terminus on iOS), check the transaction there, and sign. The wallet submits it; this page watches the explorer for the id. <span id="ergopay-status" class="muted"></span></p>
+    <canvas id="ergopay-qr" width="0" height="0"></canvas>
+    <p class="small">On this device: <a id="ergopay-link" href="#">open in an ErgoPay wallet</a><br />Transaction <code id="ergopay-txid"></code> <button type="button" id="ergopay-cancel">cancel</button></p>
   </section>
 
   <section>

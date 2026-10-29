@@ -1,7 +1,7 @@
 // The page in happy-dom: index.html loaded into the document, `fetch` answered from a world of mock-chain boxes in
 // the explorer's JSON shape, an EIP-12 wallet stubbed on `ergoConnector`, and the real src/main.ts booted on top.
 import type { Box } from "@fleet-sdk/common";
-import { ErgoTree } from "@fleet-sdk/core";
+import { ErgoAddress, ErgoTree } from "@fleet-sdk/core";
 import { hex, sha256 } from "@fleet-sdk/crypto";
 import type { MockChain, MockChainParty } from "@fleet-sdk/mock-chain";
 import { vi } from "vitest";
@@ -21,6 +21,9 @@ export interface World {
   failFirstBase?: boolean;
   /** node JSON of transactions submitted through the explorer's mempool endpoint (the keyless upkeep) */
   submitted: string[];
+  /** ids the explorer reports in the mempool (by address) or in a block, for the phone path's wait */
+  mempool?: string[];
+  confirmed?: string[];
 }
 
 const templateHash = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
@@ -72,6 +75,24 @@ export function installFetch(w: World) {
     } else if (path.startsWith("/api/v1/boxes/unspent/byTokenId/")) {
       const id = path.slice("/api/v1/boxes/unspent/byTokenId/".length);
       const items = w.boxes.filter((b) => b.assets.some((a) => a.tokenId === id)).map((b) => explorerBox(b, w.tokens));
+      body = { items, total: items.length };
+    } else if (path === "/api/v1/blocks/headers") {
+      const n = Number(url.searchParams.get("limit") ?? 10);
+      const items = Array.from({ length: n }, (_, i) => ({
+        height: w.height - i,
+        id: String(w.height - i).padStart(64, "0"),
+      }));
+      body = { items, total: w.height };
+    } else if (path.startsWith("/api/v1/boxes/unspent/byAddress/")) {
+      const tree = ErgoAddress.fromBase58(path.slice("/api/v1/boxes/unspent/byAddress/".length)).ergoTree;
+      const items = w.boxes.filter((b) => b.ergoTree === tree).map((b) => explorerBox(b, w.tokens));
+      body = { items, total: items.length };
+    } else if (path.startsWith("/api/v1/transactions/")) {
+      const id = path.slice("/api/v1/transactions/".length);
+      if (w.confirmed?.includes(id)) body = { id };
+      else status = 404;
+    } else if (path.startsWith("/api/v1/mempool/transactions/byAddress/")) {
+      const items = (w.mempool ?? []).map((id) => ({ id }));
       body = { items, total: items.length };
     } else if (path === "/api/v1/mempool/transactions/submit") {
       const json = String(init?.body);
