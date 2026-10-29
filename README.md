@@ -130,6 +130,16 @@ pocket change: this is days old.
 | bonds: request a loan, fund it, repay it before maturity | `887902b55bea59e86cdab33bebd830d7f85f098a5932759dba3cf11152e9814f`, `ae235887046f36450bbfe25974b280660a14001949fb3693510e655a0e479635`, `24a2be9d647edc06158e88ac8a00157192b8674cda149fc471277a8d36087c46` |
 | bank: mint 100 SigRSV, redeem 0.05 SigUSD | `c9feee3d5b22a692cfe3c4c50f28960089b2852d8350a029f8079e50705a3c6a`, `96478f1bb4f2e36891ff16e126c9f2ee675d6f49ae46e641237c1b1f0a0a29d0` |
 
+## Review of 2026-10-30
+
+Two independent reviews found a stored XSS (token names from the chain reached `innerHTML`) and a slippage guard
+that could not fire (the minimum was derived from the same pool it was checked against). Both are fixed: every
+chain-sourced string is now a text node, a Content-Security-Policy header allows no external script, and the
+swap's minimum is the one from the quote the user saw, so a pool that moved past it refuses to build. Also from the
+reviews: explorer failover with timeouts and a short listing cache, a runtime explorer choice in the header, pinned
+template hashes, tests for units, sizing against brute force, and the keyless id, and a pull-request CI trigger.
+Not yet done: splitting the page into one module per tab, and UI tests.
+
 ## Licence
 
 CC0 1.0 Universal: this project's own code is dedicated to the public domain, the same dedication skunkyard uses. The

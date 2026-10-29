@@ -4,7 +4,7 @@ import {
   depositQuoteT2T, depositQuoteT2TFromY, describePool, describeT2TPool, lpSupply, lpSupplyT2T, priceImpactBps, priceImpactBpsT2T,
   quote, quoteT2T, redeemQuote, redeemQuoteT2T, t2tSides, type SwapDirection,
 } from "./amm";
-import { Explorer, type PoolEntry, type T2TPoolEntry, type TokenInfo } from "./explorer";
+import { EXPLORERS, Explorer, storeExplorer, storedExplorer, type PoolEntry, type T2TPoolEntry, type TokenInfo } from "./explorer";
 import { FEE, buildClose, buildCreate, buildFill, capacity, describe, type OrderView, type OwnerSide } from "./orders";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "./units";
 import { SIGRSV_ID, SIGUSD_ID, buildMint as buildBankMint, buildRedeem as buildBankRedeem, coinOf, loadBank, mintQuote, redeemQuote as bankRedeemQuote } from "./bank";
@@ -17,7 +17,7 @@ import { runUpkeep } from "./upkeep";
 import { availableWallets, connect, disconnect, signAndSubmit, utxos, type Wallet } from "./wallet";
 import tokenlist from "./tokenlist.json" with { type: "json" };
 
-const explorer = new Explorer(import.meta.env.VITE_EXPLORER ?? undefined);
+const explorer = new Explorer(storedExplorer() ?? import.meta.env.VITE_EXPLORER ?? undefined);
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const logEl = $<HTMLDivElement>("log");
 
@@ -25,6 +25,34 @@ let wallet: Wallet | undefined;
 let orderBoxes: Box<bigint>[] = [];
 let pools: PoolEntry[] = [];
 const tokens = new Map<string, TokenInfo>();
+
+/** A table cell from text only. Token names and addresses come from the chain and are never HTML. */
+function td(text: string, cls?: string): HTMLTableCellElement {
+  const el = document.createElement("td");
+  el.textContent = text;
+  if (cls) el.className = cls;
+  return el;
+}
+/** A cell showing a shortened id or address with the full one as a tooltip, plus optional trailing text. */
+function tdCode(full: string, short: string, suffix = ""): HTMLTableCellElement {
+  const el = document.createElement("td");
+  const code = document.createElement("code");
+  code.title = full;
+  code.textContent = short;
+  el.append(code, suffix);
+  return el;
+}
+function thead(table: HTMLTableElement, heads: string[]) {
+  const h = document.createElement("thead");
+  const tr = document.createElement("tr");
+  for (const t of heads) {
+    const th = document.createElement("th");
+    th.textContent = t;
+    tr.append(th);
+  }
+  h.append(tr);
+  table.append(h);
+}
 
 function log(msg: string) {
   logEl.textContent = `${new Date().toISOString().slice(11, 19)} ${msg}\n` + logEl.textContent;
@@ -113,6 +141,7 @@ async function send(build: Builder): Promise<string> {
   log(`built: ${tx.inputs.length} inputs, ${tx.outputs.length} outputs, height ${height}; waiting for the wallet`);
   const txId = await signAndSubmit(wallet, tx);
   log(`submitted ${txId}\n${explorer.txUrl(txId)}`);
+  explorer.invalidate();
   return txId;
 }
 
@@ -168,6 +197,8 @@ const swapTo = $<HTMLSelectElement>("swap-to");
 const swapGo = $<HTMLButtonElement>("swap-go");
 let fromId = ERG;
 let toId = "";
+/** The quote the user last saw: its minimum after slippage is what a freshly read pool must still pay. */
+let shown: { amountIn: bigint; minOut: bigint } | undefined;
 let otherSide: "from" | "to" = "to";
 
 type Route =
@@ -236,7 +267,7 @@ async function renderBalance() {
   if (!wallet || !fromId) return;
   try {
     const raw = BigInt(await wallet.api.get_balance(fromId));
-    const reserve = fromId === ERG ? FEE + 1_000_000n : 0n;
+    const reserve = fromId === ERG ? FEE + 2_000_000n : 0n; // the fee, the received box, a change box that may carry tokens
     const max = raw > reserve ? raw - reserve : 0n;
     el.append(`balance ${formatUnits(raw, decimalsOf(fromId))} ${nameOf(fromId)} `);
     const b = document.createElement("button");
@@ -261,6 +292,7 @@ function renderQuote() {
   dlEl.replaceChildren();
   swapGo.disabled = true;
   swapOut.value = "";
+  shown = undefined;
   const r = route();
   $("swap-route").textContent = r.kind === "none" ? r.why : r.kind === "n2t" ? `ERG pool, ${formatUnits(r.entry.box.value, ERG_DECIMALS, 0)} ERG deep` : `direct ${nameOf(fromId)}/${nameOf(toId)} pool`;
   if (r.kind === "none") return;
@@ -314,6 +346,7 @@ function renderQuote() {
       }
     }
     const minOut = out - (out * slippageBps()) / 10_000n;
+    shown = { amountIn, minOut };
     rows.push(["You receive (estimate)", `${formatUnits(out, outDec)} ${nameOf(toId)}`]);
     rows.push(["Minimum after slippage", formatUnits(minOut, outDec)]);
     rows.push(["Price impact", `${formatUnits(impactFn(amountIn), 2)}%`]);
@@ -338,16 +371,14 @@ swapGo.onclick = async () => {
     const r = route();
     if (r.kind === "none") throw new Error(r.why);
     const amountIn = parseUnits(swapIn.value, decimalsOf(fromId));
-    const bps = slippageBps();
+    if (!shown || shown.amountIn !== amountIn) throw new Error("the quote is stale; type the amount again");
+    // the pool is re-read now; it must still pay at least the minimum the user saw, or the build refuses
+    const minOut = shown.minOut;
     if (r.kind === "n2t") {
-      const fresh = await explorer.poolByNft(r.entry.box.assets[0].tokenId); // the pool as it stands now
-      const q = quote(describePool(fresh.box), r.direction, amountIn);
-      const minOut = q - (q * bps) / 10_000n;
+      const fresh = await explorer.poolByNft(r.entry.box.assets[0].tokenId);
       await send((height, inputs) => buildSwap({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, direction: r.direction, amountIn, minOut }));
     } else {
       const fresh = await explorer.t2tPoolByNft(r.entry.box.assets[0].tokenId);
-      const q = quoteT2T(describeT2TPool(fresh.box), fromId, amountIn);
-      const minOut = q - (q * bps) / 10_000n;
       await send((height, inputs) => buildSwapT2T({ height, inputs, user: wallet!.changeAddress, poolBox: fresh.box, inId: fromId, amountIn, minOut }));
     }
     swapIn.value = "";
@@ -626,10 +657,11 @@ function orderRow(box: Box<bigint>, v: OrderView, decimals: number): HTMLTableRo
   const tr = document.createElement("tr");
   if (isMine(v)) tr.className = "mine";
   const cap = capacity(v);
-  tr.innerHTML =
-    `<td class="num">${priceToErgPerToken(v.price, decimals)}</td>` +
-    `<td class="num">${formatUnits(cap, decimals)}${v.takerAction === "sell" ? ` (${formatUnits(v.value, ERG_DECIMALS)} ERG)` : ""}</td>` +
-    `<td><code title="${v.owner}">${v.owner.slice(0, 6)}…</code>${isMine(v) ? " (you)" : ""}</td>`;
+  tr.append(
+    td(priceToErgPerToken(v.price, decimals), "num"),
+    td(`${formatUnits(cap, decimals)}${v.takerAction === "sell" ? ` (${formatUnits(v.value, ERG_DECIMALS)} ERG)` : ""}`, "num"),
+    tdCode(v.owner, `${v.owner.slice(0, 6)}…`, isMine(v) ? " (you)" : ""),
+  );
   const actions = document.createElement("td");
   if (wallet) {
     if (isMine(v)) {
@@ -668,7 +700,7 @@ function sideTable(title: string, rows: { box: Box<bigint>; v: OrderView }[], de
   const h = document.createElement("h3");
   h.textContent = title;
   const table = document.createElement("table");
-  table.innerHTML = `<thead><tr><th>Price (ERG/token)</th><th>Available</th><th>Owner</th><th></th></tr></thead>`;
+  thead(table, ["Price (ERG/token)", "Available", "Owner", ""]);
   const tbody = document.createElement("tbody");
   for (const { box, v } of rows) tbody.append(orderRow(box, v, decimals));
   table.append(tbody);
@@ -698,7 +730,10 @@ function renderOrders() {
     const best: string[] = [];
     if (buys.length) best.push(`buy from ${priceToErgPerToken(buys[0].v.price, t.decimals)}`);
     if (sells.length) best.push(`sell at ${priceToErgPerToken(sells[0].v.price, t.decimals)}`);
-    sum.innerHTML = `${t.name || tokenId.slice(0, 10)} <span class="muted">${rows.length} order${rows.length === 1 ? "" : "s"}; best: ${best.join(", ")} ERG/token</span>`;
+    const muted = document.createElement("span");
+    muted.className = "muted";
+    muted.textContent = `${rows.length} order${rows.length === 1 ? "" : "s"}; best: ${best.join(", ")} ERG/token`;
+    sum.append(`${t.name || tokenId.slice(0, 10)} `, muted);
     det.append(sum, ...sideTable("You buy tokens from these orders", buys, t.decimals), ...sideTable("You sell tokens into these orders", sells, t.decimals));
     out.push(det);
   }
@@ -836,15 +871,21 @@ async function loadBonds() {
     for (const { v } of [...orders, ...bonds]) for (const t of [v.principalId, ...v.collateralTokens.map((c) => c.tokenId)]) if (t !== ERG && !tokens.has(t)) await tokenInfo(t);
 
     const ot = document.createElement("table");
-    ot.innerHTML = `<thead><tr><th>Principal</th><th>Repayment</th><th>Term</th><th>Collateral</th><th>Borrower</th><th></th></tr></thead>`;
+    thead(ot, ["Principal", "Repayment", "Term", "Collateral", "Borrower", ""]);
     const otb = document.createElement("tbody");
     for (const { box, v } of orders.sort((a, b) => (b.v.principal > a.v.principal ? 1 : -1))) {
       const tr = document.createElement("tr");
       const mine = me.includes(v.borrower);
       if (mine) tr.className = "mine";
       const interest = v.principal > 0n ? Number(((v.repayment - v.principal) * 10_000n) / v.principal) / 100 : 0;
-      tr.innerHTML = `<td>${amountText(v.principalId, v.principal)}</td><td>${amountText(v.principalId, v.repayment)} (${interest}%)</td><td class="num">${v.term} blocks</td><td>${collateralText(v)}</td><td><code title="${v.borrower}">${v.borrower.slice(0, 6)}…</code>${mine ? " (you)" : ""}</td>`;
-      const td = document.createElement("td");
+      tr.append(
+        td(amountText(v.principalId, v.principal)),
+        td(`${amountText(v.principalId, v.repayment)} (${interest}%)`),
+        td(`${v.term} blocks`, "num"),
+        td(collateralText(v)),
+        tdCode(v.borrower, `${v.borrower.slice(0, 6)}…`, mine ? " (you)" : ""),
+      );
+      const actionsCell = document.createElement("td");
       if (wallet) {
         const b = document.createElement("button");
         b.textContent = mine ? "cancel" : `lend (+${amountText(v.principalId, devFee(v.principal))} dev fee)`;
@@ -852,37 +893,43 @@ async function loadBonds() {
           send((height, inputs) => (mine ? buildCancelOrder({ height, inputs, borrower: wallet!.changeAddress, orderBox: box }) : buildLend({ height, inputs, lender: wallet!.changeAddress, orderBox: box })))
             .then(() => setTimeout(() => void loadBonds(), 3000))
             .catch((e) => log(`${mine ? "cancel" : "lend"} failed: ${err(e)}`));
-        td.append(b);
+        actionsCell.append(b);
       }
-      tr.append(td);
+      tr.append(actionsCell);
       otb.append(tr);
     }
     ot.append(otb);
     $("orders-list").replaceChildren(orders.length ? ot : "no open loan requests");
 
     const bt = document.createElement("table");
-    bt.innerHTML = `<thead><tr><th>Repayment</th><th>Matures</th><th>Collateral</th><th>Borrower</th><th>Lender</th><th></th></tr></thead>`;
+    thead(bt, ["Repayment", "Matures", "Collateral", "Borrower", "Lender", ""]);
     const btb = document.createElement("tbody");
     for (const { box, v } of bonds.sort((a, b) => a.v.maturity - b.v.maturity)) {
       const tr = document.createElement("tr");
       const borrower = me.includes(v.borrower), lender = me.includes(v.lender);
       if (borrower || lender) tr.className = "mine";
       const left = v.maturity - height;
-      tr.innerHTML = `<td>${amountText(v.principalId, v.repayment)}</td><td class="num">${v.maturity} (${left > 0 ? `${left} blocks left` : "matured"})</td><td>${collateralText(v)}</td><td><code title="${v.borrower}">${v.borrower.slice(0, 6)}…</code>${borrower ? " (you)" : ""}</td><td><code title="${v.lender}">${v.lender.slice(0, 6)}…</code>${lender ? " (you)" : ""}</td>`;
-      const td = document.createElement("td");
+      tr.append(
+        td(amountText(v.principalId, v.repayment)),
+        td(`${v.maturity} (${left > 0 ? `${left} blocks left` : "matured"})`, "num"),
+        td(collateralText(v)),
+        tdCode(v.borrower, `${v.borrower.slice(0, 6)}…`, borrower ? " (you)" : ""),
+        tdCode(v.lender, `${v.lender.slice(0, 6)}…`, lender ? " (you)" : ""),
+      );
+      const actionsCell = document.createElement("td");
       if (wallet && borrower && left > 0) {
         const b = document.createElement("button");
         b.textContent = "repay";
         b.onclick = () => send((h, inputs) => buildRepay({ height: h, inputs, borrower: wallet!.changeAddress, bondBox: box })).then(() => setTimeout(() => void loadBonds(), 3000)).catch((e) => log(`repay failed: ${err(e)}`));
-        td.append(b);
+        actionsCell.append(b);
       }
       if (wallet && left <= 0) {
         const b = document.createElement("button");
         b.textContent = lender ? "take collateral" : "hand collateral to the lender";
         b.onclick = () => send((h, inputs) => buildLiquidate({ height: h, inputs, recipient: wallet!.changeAddress, bondBox: box })).then(() => setTimeout(() => void loadBonds(), 3000)).catch((e) => log(`liquidate failed: ${err(e)}`));
-        td.append(b);
+        actionsCell.append(b);
       }
-      tr.append(td);
+      tr.append(actionsCell);
       btb.append(tr);
     }
     bt.append(btb);
@@ -931,25 +978,30 @@ async function loadEscrows() {
     const mine = all.flatMap((box) => { try { const v = describeEscrow(box); return me.includes(v.seller) || me.includes(v.buyer) ? [{ box, v }] : []; } catch { return []; } });
     for (const { v } of mine) if (!tokens.has(v.tokenId)) await tokenInfo(v.tokenId);
     const t = document.createElement("table");
-    t.innerHTML = `<thead><tr><th>Tokens</th><th>Price</th><th>Seller</th><th>Buyer</th><th></th></tr></thead>`;
+    thead(t, ["Tokens", "Price", "Seller", "Buyer", ""]);
     const tb = document.createElement("tbody");
     for (const { box, v } of mine) {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${amountText(v.tokenId, v.amount)}</td><td class="num">${formatUnits(v.price, ERG_DECIMALS)} ERG</td><td><code title="${v.seller}">${v.seller.slice(0, 6)}…</code>${me.includes(v.seller) ? " (you)" : ""}</td><td><code title="${v.buyer}">${v.buyer.slice(0, 6)}…</code>${me.includes(v.buyer) ? " (you)" : ""}</td>`;
-      const td = document.createElement("td");
+      tr.append(
+        td(amountText(v.tokenId, v.amount)),
+        td(`${formatUnits(v.price, ERG_DECIMALS)} ERG`, "num"),
+        tdCode(v.seller, `${v.seller.slice(0, 6)}…`, me.includes(v.seller) ? " (you)" : ""),
+        tdCode(v.buyer, `${v.buyer.slice(0, 6)}…`, me.includes(v.buyer) ? " (you)" : ""),
+      );
+      const actionsCell = document.createElement("td");
       if (me.includes(v.buyer)) {
         const b = document.createElement("button");
         b.textContent = "pay and take";
         b.onclick = () => send((h, inputs) => buildTakeEscrow({ height: h, inputs, buyer: wallet!.changeAddress, escrowBox: box })).then(() => setTimeout(() => void loadEscrows(), 3000)).catch((e) => log(`take failed: ${err(e)}`));
-        td.append(b, " ");
+        actionsCell.append(b, " ");
       }
       if (me.includes(v.seller)) {
         const b = document.createElement("button");
         b.textContent = "cancel";
         b.onclick = () => send((h, inputs) => buildCancelEscrow({ height: h, inputs, seller: wallet!.changeAddress, escrowBox: box })).then(() => setTimeout(() => void loadEscrows(), 3000)).catch((e) => log(`cancel failed: ${err(e)}`));
-        td.append(b);
+        actionsCell.append(b);
       }
-      tr.append(td);
+      tr.append(actionsCell);
       tb.append(tr);
     }
     t.append(tb);
@@ -1005,6 +1057,30 @@ $<HTMLInputElement>("upkeep-on").onchange = () => {
   $("upkeep-status").textContent = "";
   if ($<HTMLInputElement>("upkeep-on").checked) scheduleUpkeep();
 };
+
+// ---- explorer choice ---------------------------------------------------------------------------
+
+{
+  const sel = $<HTMLSelectElement>("explorer-pick");
+  for (const b of EXPLORERS) sel.append(new Option(b.replace(/^https:\/\//, ""), b));
+  const stored = storedExplorer();
+  if (stored && !EXPLORERS.includes(stored)) sel.append(new Option(stored.replace(/^https:\/\//, ""), stored));
+  sel.append(new Option("other…", "__other__"));
+  sel.value = explorer.base;
+  sel.onchange = () => {
+    let base = sel.value;
+    if (base === "__other__") {
+      const typed = window.prompt("Explorer API base URL (an Ergo explorer backend with /api/v1)", "https://");
+      if (!typed || !/^https:\/\/[^\s/]+$/.test(typed.trim())) {
+        sel.value = explorer.base;
+        return;
+      }
+      base = typed.trim();
+    }
+    storeExplorer(base === EXPLORERS[0] ? undefined : base);
+    location.reload();
+  };
+}
 
 // ---- boot --------------------------------------------------------------------------------------
 

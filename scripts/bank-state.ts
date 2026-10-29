@@ -1,5 +1,5 @@
-import { Explorer } from "/home/scott/bin/skunkyard/skunks/dexpage/src/explorer.ts";
-import { loadBank, mintQuote } from "/home/scott/bin/skunkyard/skunks/dexpage/src/bank.ts";
+import { Explorer } from "../src/explorer.ts";
+import { loadBank, mintQuote } from "../src/bank.ts";
 const b = await loadBank(new Explorer());
 console.log("oracle nanoERG/cent", b.oracleRate, "ratio", b.reserveRatio + "%", "reserves ERG", b.baseReserves / 1_000_000_000n, "SigUSD circ", b.circulatingStableCoins, "SigRSV circ", b.circulatingReserveCoins);
 console.log("mintable SigUSD", b.availableStableCoins, "SigRSV", b.availableReserveCoins, "| SigRSV price nanoERG", b.reserveCoinPrice);

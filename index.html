@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src https:; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>FreeDEX for Ergo</title>
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; --line: #8884; --panel: #8881; }
@@ -41,10 +42,10 @@
 <body>
   <header>
     <h1>FreeDEX <span class="muted">for Ergo</span></h1>
-    <div id="wallet"></div>
+    <div><select id="explorer-pick" class="small" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="wallet"></span></div>
   </header>
   <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
-  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids above their pool, and more to come), builds those transactions with no signature and none of your funds, and sends the bounty to your address. <span id="upkeep-status" class="muted"></span></label></p>
+  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool), builds those transactions with no signature and none of your funds, and sends the bounty to your address. <span id="upkeep-status" class="muted"></span></label></p>
 
   <nav role="tablist">
     <button role="tab" data-tab="swap" aria-selected="true">Swap</button>

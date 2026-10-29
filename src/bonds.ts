@@ -45,7 +45,7 @@ export interface LoanView {
   /** blocks; for an order the term, for a bond the maturity height */
   term: number;
   borrower: string;
-  /** collateral: the box's ERG above the minimum, and its tokens */
+  /** collateral: the box's whole ERG when it is more than a minimum box (the order's own value is the collateral), and its tokens */
   collateralErg: bigint;
   collateralTokens: { tokenId: string; amount: bigint }[];
 }
