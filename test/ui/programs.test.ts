@@ -3,9 +3,11 @@
 // left, cancel through the wallet, the create form, and the upkeep runner executing a due leg of a stranger's program.
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EIP12UnsignedTransaction } from "@fleet-sdk/common";
-import { CLOCK_TREE, describeClock } from "../../src/clock";
+import { estimateBoxSize } from "@fleet-sdk/serializer";
+import { CLOCK_SELL_TREE, CLOCK_TREE, MIN_VALUE_PER_BYTE, STORAGE_FEE_FACTOR, describeClock } from "../../src/clock";
 import { makeWorld, SIGUSD } from "./fixtures";
 import {
+  choose,
   column,
   connect,
   el,
@@ -43,17 +45,38 @@ describe("programs", () => {
     expect(q["legs"]).toBe("3, one every 720 blocks (about 1 day)");
     expect(q["per leg"]).toMatch(/^0.1 ERG into the pool, 0.0015 ERG to whoever runs it$/);
     expect(q["executor keeps"]).toMatch(/^0.0004 ERG/);
-    expect(q["rent reserve"]).toMatch(/ERG held in the box, back to you with the last leg \(\d+ bytes\)$/);
+    expect(q["rent"]).toMatch(
+      /^none held: the box is ERG, .* would take its fee \(0\.\d+ ERG for \d+ bytes\) from the budget/,
+    );
+    expect(q["locked now"]).toBe("0.3045 ERG plus the miner fee"); // no reserve on the buy side
     expect(text("prog-interval-days")).toBe("(about 1 day)");
     expect(el<HTMLButtonElement>("prog-go").disabled).toBe(true); // no wallet
     expect(text("programs-mine")).toBe("connect a wallet to see your programs");
     const list = el("programs-list").querySelector("table")!;
-    expect(column(list, 0)).toEqual(["RSN", "RSN"]);
-    expect(column(list, 3)).toEqual([
+    expect(column(list, 0)).toEqual(["RSN", "RSN", "RSN"]);
+    expect(column(list, 1)).toEqual(["buy", "buy", "sell"]);
+    expect(column(list, 2)).toEqual(["0.1 ERG", "0.1 ERG", "1 RSN"]);
+    expect(column(list, 4)).toEqual([
       expect.stringMatching(/\(due now\)$/),
       expect.stringMatching(/\(in \d+ blocks\)$/),
+      expect.stringMatching(/\(in \d+ blocks\)$/),
     ]);
-    expect(column(list, 4)).toEqual(["3", "3"]);
+    expect(column(list, 5)).toEqual(["3", "3", "3"]);
+    expect(column(list, 6)[2]).toMatch(/^3 RSN, 0\.9\d+ ERG$/); // the tokens, the fees and the rent reserve
+    // the sell side's quote: token amounts, a floor, the full rent reserve held
+    choose("prog-side", "sell");
+    expect(text("prog-amount-label")).toBe("Tokens to sell in all");
+    expect(text("prog-cap-label")).toBe("Price floor (ERG per token, blank for none)");
+    type("prog-amount", "3");
+    type("prog-slice", "1");
+    await settle();
+    const qs = rows("prog-quote");
+    expect(qs["legs"]).toBe("3, one every 720 blocks (about 1 day)");
+    expect(qs["per leg"]).toBe("1 SigUSD into the pool, 0.0015 ERG to whoever runs it");
+    expect(qs["rent reserve"]).toMatch(
+      /^0\.\d+ ERG held in the box, back to you with the last leg: one rent fee for \d+ bytes/,
+    );
+    expect(qs["locked now"]).toMatch(/^3 SigUSD and 0\.9\d+ ERG \(the fees, the reserve and the box minimum\)/);
   });
 
   it("with a wallet: the visitor's program first, cancel through the wallet, and a new program from the form", async () => {
@@ -61,9 +84,9 @@ describe("programs", () => {
     tab("programs");
     await settle(100);
     const mine = el("programs-mine").querySelector("table")!;
-    expect(column(mine, 2)).toEqual(["720 blocks (about 1 day)"]);
-    expect(column(mine, 6)[0]).toMatch(/\(you\)$/);
-    expect(el("programs-list").querySelector("table")!.querySelectorAll("tbody tr").length).toBe(1);
+    expect(column(mine, 3)).toEqual(["720 blocks (about 1 day)"]);
+    expect(column(mine, 7)[0]).toMatch(/\(you\)$/);
+    expect(el("programs-list").querySelector("table")!.querySelectorAll("tbody tr").length).toBe(2);
     // cancel: the wallet signs a transaction whose only input is the program box, everything back to the visitor
     mine.querySelector("button")!.click();
     await settle(100);
@@ -97,8 +120,32 @@ describe("programs", () => {
     expect(v.maxPrice).toBe(600_000n); // 0.06 ERG per SigUSD, two decimals: 600,000 nanoERG per unit
     expect(v.executorFee).toBe(1_500_000n);
     expect(v.legsLeft).toBe(3);
-    expect(v.value).toBe(3n * 11_500_000n + v.rentReserve);
+    expect(v.rentReserve).toBe(0n);
+    expect(v.value).toBe(3n * 11_500_000n);
     expect(text("log")).toMatch(/submitted/);
+    // a tranche sale from the same form: 3 SigUSD in slices of 1, floor 0.04 ERG per SigUSD
+    choose("prog-side", "sell");
+    type("prog-amount", "3");
+    type("prog-slice", "1");
+    type("prog-cap", "0.04");
+    await settle();
+    expect(el<HTMLButtonElement>("prog-go").disabled).toBe(false);
+    el<HTMLFormElement>("create-program").requestSubmit();
+    await settle(100);
+    expect(api.sign_tx).toHaveBeenCalledTimes(3);
+    const sellTx = api.sign_tx.mock.calls[2][0] as EIP12UnsignedTransaction;
+    expect(sellTx.outputs[0].ergoTree).toBe(CLOCK_SELL_TREE);
+    expect(sellTx.outputs[0].assets).toEqual([{ tokenId: SIGUSD, amount: "300" }]);
+    const sv = describeClock({ ...sellTx.outputs[0], boxId: "", transactionId: "", index: 0 });
+    expect(sv.side).toBe("sell");
+    expect(sv.tokens).toBe(300n);
+    expect(sv.slice).toBe(100n);
+    expect(sv.minPrice).toBe(400_000n); // 0.04 ERG per SigUSD, two decimals: 400,000 nanoERG per unit
+    expect(sv.maxPrice).toBe(0n);
+    expect(sv.legsLeft).toBe(3);
+    const bytes = sv.rentReserve / STORAGE_FEE_FACTOR; // the reserve is one rent fee for the box's estimated bytes
+    expect(sv.value).toBe(3n * 1_500_000n + sv.rentReserve + bytes * MIN_VALUE_PER_BYTE);
+    expect(Number(bytes) - estimateBoxSize(sellTx.outputs[0])).toBeLessThanOrEqual(1); // sized at a height of the widest encoding
   });
 
   it("the upkeep runner executes the due leg of a stranger's program, keyless, the fee to the visitor", async () => {

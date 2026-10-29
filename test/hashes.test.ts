@@ -14,8 +14,15 @@ import { LimitOrder } from "@nautls/machinafi-sdk";
 import { ErgoAddress } from "@fleet-sdk/core";
 import { bondContract, orderContract, SIGMAFI_TEMPLATES } from "../src/bonds";
 import { compile } from "@fleet-sdk/compiler";
-import { CLOCK_SLACK, CLOCK_TEMPLATE_SHA256, CLOCK_TREE } from "../src/clock";
+import {
+  CLOCK_SELL_TEMPLATE_SHA256,
+  CLOCK_SELL_TREE,
+  CLOCK_SLACK,
+  CLOCK_TEMPLATE_SHA256,
+  CLOCK_TREE,
+} from "../src/clock";
 import CLOCK_SOURCE from "../contracts/Clock.es?raw";
+import CLOCK_SELL_SOURCE from "../contracts/ClockSell.es?raw";
 
 const h = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
 
@@ -36,15 +43,17 @@ describe("template hashes match their trees", () => {
     }).ergoTree;
     expect(h(tree)).toBe(E2T_LIMIT_TEMPLATE_SHA256);
   });
+  // the same compile as scripts/compile-clock.ts: ErgoTree v1, segregated constants, SLACK substituted
+  const compiled = (source: string) =>
+    compile(source.replace(/\$SLACK/g, String(CLOCK_SLACK)), { version: 1, segregateConstants: true }).toHex();
   it("the clocked box: the pinned tree is what contracts/Clock.es compiles to", () => {
     expect(h(CLOCK_TREE)).toBe(CLOCK_TEMPLATE_SHA256);
-    // the same compile as scripts/compile-clock.ts: ErgoTree v1, segregated constants, SLACK substituted
-    const tree = compile(CLOCK_SOURCE.replace(/\$SLACK/g, String(CLOCK_SLACK)), {
-      version: 1,
-      segregateConstants: true,
-    });
-    expect(tree.toHex()).toBe(CLOCK_TREE);
-    expect(h(tree.toHex())).toBe(CLOCK_TEMPLATE_SHA256);
+    expect(compiled(CLOCK_SOURCE)).toBe(CLOCK_TREE);
+  });
+  it("the tranche sale: the pinned tree is what contracts/ClockSell.es compiles to", () => {
+    expect(h(CLOCK_SELL_TREE)).toBe(CLOCK_SELL_TEMPLATE_SHA256);
+    expect(compiled(CLOCK_SELL_SOURCE)).toBe(CLOCK_SELL_TREE);
+    expect(CLOCK_SELL_TEMPLATE_SHA256).not.toBe(CLOCK_TEMPLATE_SHA256);
   });
   it("SigmaFi orders and bonds", () => {
     expect(h(orderContract("ERG"))).toBe(SIGMAFI_TEMPLATES.orderOnCloseErg);

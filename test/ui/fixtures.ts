@@ -5,7 +5,7 @@ import { SIGMA_USD_PARAMETERS } from "@fleet-sdk/ageusd-plugin";
 import { SGroupElement, SInt, SLong, SSigmaProp } from "@fleet-sdk/serializer";
 import { POOL_TREE, T2T_POOL_TREE } from "../../src/amm";
 import { babelTree } from "../../src/babel";
-import { CLOCK_TREE, buildCreateClock } from "../../src/clock";
+import { CLOCK_SELL_TREE, CLOCK_TREE, buildCreateClock, buildCreateClockSell } from "../../src/clock";
 import { bondContract, buildLend, buildOpenOrder, orderContract } from "../../src/bonds";
 import { ESCROW_TREE, buildCreateEscrow } from "../../src/escrow";
 import { buildCreate } from "../../src/orders";
@@ -41,7 +41,13 @@ export function makeWorld() {
       { tokenId: RSBTC, amount: 100_000_000n },
     ],
   });
-  stranger.addBalance({ nanoergs: 100n * ERG, tokens: [{ tokenId: SIGUSD, amount: 100_000n }] });
+  stranger.addBalance({
+    nanoergs: 100n * ERG,
+    tokens: [
+      { tokenId: SIGUSD, amount: 100_000n },
+      { tokenId: RSN, amount: 5_000n },
+    ],
+  });
   other.addBalance({ nanoergs: 100n * ERG, tokens: [{ tokenId: SIGUSD, amount: 100_000n }] });
 
   // ERG pools: SigUSD at 0.05 ERG per SigUSD (1000 ERG / 20,000 SigUSD), RSN; a direct SigUSD/rsBTC pool
@@ -270,7 +276,27 @@ export function makeWorld() {
     }),
     me,
   );
-  chain.jumpTo(chain.height + 101); // the lent bond has matured, the stranger's program is due
+  // the stranger's tranche sale on RSN, not due for a day: listed, not executed
+  const programsSell = chain.addParty(CLOCK_SELL_TREE, "sell programs");
+  chain.addParty(programsSell);
+  parties.push(programsSell);
+  run(
+    buildCreateClockSell({
+      owner: stranger.address,
+      tokenId: RSN,
+      poolBox: poolRsn.utxos.at(0),
+      tokens: 3_000n,
+      slice: 1_000n,
+      interval: 720,
+      toleranceBps: 50n,
+      executorFee: 1_500_000n,
+      minPrice: 0n,
+      height: chain.height,
+      inputs: stranger.utxos.toArray(),
+    }),
+    stranger,
+  );
+  chain.jumpTo(chain.height + 101); // the lent bond has matured, the stranger's buy program is due
 
   // escrows: the stranger offers 10 SigUSD units to the visitor at 0.002 ERG; another between strangers
   const escrows = chain.addParty(ESCROW_TREE, "escrows");
@@ -311,5 +337,5 @@ export function makeWorld() {
     tokens,
     submitted: [],
   };
-  return { chain, me, stranger, other, world, bonds, escrows, programs };
+  return { chain, me, stranger, other, world, bonds, escrows, programs, programsSell };
 }

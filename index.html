@@ -137,13 +137,7 @@
 
   <section id="tab-bonds" hidden>
     <p class="muted small">SigmaFi peer-to-peer loans on its deployed contracts. A borrower locks collateral and names the principal, the repayment and the term; a lender funds it; the borrower repays before maturity or the lender takes the collateral after. The contract pays a 0.5% developer fee to SigmaFi's author on every loan, which the page shows and cannot remove; the contract's 0.4% "interface fee" is paid to the lender's own address here.</p>
-    <h2>Your positions</h2>
-    <div id="bonds-mine">connect a wallet</div>
-    <h2 style="margin-top:1.25rem">Open loan requests</h2>
-    <div id="orders-list">loading…</div>
-    <h2 style="margin-top:1.25rem">Bonds</h2>
-    <div id="bonds-list">loading…</div>
-    <h2 style="margin-top:1.25rem">Request a loan</h2>
+    <h2>Request a loan</h2>
     <form id="open-order" class="grid">
       <label for="loan-token">Principal</label>
       <select id="loan-token"><option value="ERG">ERG</option></select>
@@ -161,6 +155,16 @@
       <input id="loan-coll-amount" inputmode="decimal" placeholder="optional" />
       <button type="submit">Build, sign in wallet, submit</button>
     </form>
+    <h2 style="margin-top:1.25rem">Your positions</h2>
+    <div id="bonds-mine">connect a wallet</div>
+    <details id="orders-details" style="margin-top:1.25rem">
+      <summary>Open loan requests <span id="orders-count" class="muted"></span></summary>
+      <div id="orders-list">loading…</div>
+    </details>
+    <details id="bonds-details">
+      <summary>Bonds <span id="bonds-count" class="muted"></span></summary>
+      <div id="bonds-list">loading…</div>
+    </details>
   </section>
 
   <section id="tab-escrow" hidden>
@@ -184,26 +188,31 @@
   </section>
 
   <section id="tab-programs" hidden>
-    <p class="muted small">A clocked box: ERG that anyone may spend for you once per interval, one slice at a time, into the token's deepest ErgoDEX pool, the tokens to your address. Dollar-cost averaging with no server and no key but yours. Each leg must deliver at least the pool's own rule for the slice (less your tolerance) and may pay at most the executor fee you set to whoever runs it; an optional cap makes the program wait while the pool is dearer. The box also holds one storage-rent fee, returned with the last leg. Cancel any time, everything back. The page's own upkeep and the Node runner execute due legs; the page adds no fee.</p>
+    <p class="muted small">A clocked box: a box anyone may act on for you once per interval, one slice at a time, against the token's deepest ErgoDEX pool, with no server and no key but yours. <b>Buy</b> locks ERG and buys a slice of tokens per leg, the tokens to your address (dollar-cost averaging); <b>sell</b> locks tokens and sells a slice per leg, the ERG to your address (a tranche sale). Each leg must deliver at least the pool's own rule for the slice (less your tolerance) and may pay at most the executor fee you set to whoever runs it; a price cap (buy) or floor (sell) makes the program wait while the pool is dearer or cheaper. What the box locks beyond the legs differs by side: a buy program holds no storage-rent reserve, because a rent claim on a box left for four years takes its fee from the ERG budget and leaves a smaller program; a sell program holds one rent fee for its bytes, because a token box that cannot pay rent is consumed whole, tokens included, and gets it back with the last leg. Cancel any time, everything back. The page's own upkeep and the Node runner execute due legs; the page adds no fee.</p>
     <h2>Your programs</h2>
     <div id="programs-mine">connect a wallet</div>
     <h2 style="margin-top:1.25rem">Open programs</h2>
     <div id="programs-list">loading…</div>
     <h2 style="margin-top:1.25rem">Start a program</h2>
     <form id="create-program" class="grid">
+      <label for="prog-side">Side</label>
+      <select id="prog-side">
+        <option value="buy">buy: spend ERG in slices, the tokens to you</option>
+        <option value="sell">sell: sell tokens in slices, the ERG to you</option>
+      </select>
       <label for="prog-token-pick">Token</label>
       <select id="prog-token-pick"></select>
       <label for="prog-token">Token id</label>
       <input id="prog-token" size="64" pattern="[0-9a-fA-F]{64}" required />
-      <label for="prog-amount">ERG to spend in all</label>
+      <label for="prog-amount" id="prog-amount-label">ERG to spend in all</label>
       <input id="prog-amount" inputmode="decimal" value="0.03" required />
-      <label for="prog-slice">ERG per leg (slice)</label>
+      <label for="prog-slice" id="prog-slice-label">ERG per leg (slice)</label>
       <input id="prog-slice" inputmode="decimal" value="0.01" required />
       <label for="prog-interval">Interval (blocks) <span id="prog-interval-days" class="muted"></span></label>
       <input id="prog-interval" inputmode="numeric" value="720" required />
       <label for="prog-tolerance">Tolerance under the pool's rule (%)</label>
       <input id="prog-tolerance" inputmode="decimal" value="0.5" />
-      <label for="prog-cap">Price cap (ERG per token, blank for none)</label>
+      <label for="prog-cap" id="prog-cap-label">Price cap (ERG per token, blank for none)</label>
       <input id="prog-cap" inputmode="decimal" />
       <label for="prog-fee">Executor fee per leg (ERG)</label>
       <input id="prog-fee" inputmode="decimal" value="0.0015" required />

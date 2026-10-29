@@ -8,7 +8,7 @@ import { serializeTransaction } from "@fleet-sdk/serializer";
 import { describePool } from "./amm.ts";
 import { buildBabelTake, describeBabel } from "./babel.ts";
 import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./bonds.ts";
-import { CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./clock.ts";
+import { CLOCK_SELL_TEMPLATE_SHA256, CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./clock.ts";
 import type { Explorer } from "./explorer.ts";
 import { buildOrderTake } from "./machina-arb.ts";
 import { FEE, describe as describeOrder } from "./orders.ts";
@@ -100,14 +100,19 @@ export const ordersVsPool: UpkeepJob = {
 };
 
 /**
- * Clocked boxes (contracts/Clock.es) whose interval has passed: one leg each against the program's own pool, the
- * tokens to the owner, the executor fee to the visitor. `buildLeg` declines a leg that is not due, is above the
- * program's price cap, or whose fee does not cover the miner fee and the owner's output.
+ * Clocked boxes of both sides (contracts/Clock.es buys, contracts/ClockSell.es sells) whose interval has passed: one
+ * leg each against the program's own pool, the tokens or the ERG to the owner, the executor fee to the visitor.
+ * `buildLeg` declines a leg that is not due, is outside the program's price bound (the buy side's cap, the sell
+ * side's floor), or whose fee does not cover the miner fee and the owner's output.
  */
 export const clockLegs: UpkeepJob = {
   name: "clock-legs",
   async find(explorer, height, payTo) {
-    const boxes = await explorer.byTemplate(CLOCK_TEMPLATE_SHA256, 500);
+    const [buys, sells] = await Promise.all([
+      explorer.byTemplate(CLOCK_TEMPLATE_SHA256, 500),
+      explorer.byTemplate(CLOCK_SELL_TEMPLATE_SHA256, 500),
+    ]);
+    const boxes = [...buys, ...sells];
     const out: UpkeepCandidate[] = [];
     for (const clockBox of boxes) {
       let v;
@@ -127,7 +132,10 @@ export const clockLegs: UpkeepJob = {
       if (!built) continue;
       out.push({
         job: this.name,
-        what: `program ${v.boxId.slice(0, 8)} on ${v.tokenId.slice(0, 8)}: ${built.size.amt} nanoERG for ${built.size.got} units to its owner${built.size.last ? ", the last leg" : ""}, ${built.size.payout} nanoERG to you`,
+        what:
+          v.side === "buy"
+            ? `program ${v.boxId.slice(0, 8)} on ${v.tokenId.slice(0, 8)}: ${built.size.amt} nanoERG for ${built.size.got} units to its owner${built.size.last ? ", the last leg" : ""}, ${built.size.payout} nanoERG to you`
+            : `sell program ${v.boxId.slice(0, 8)} on ${v.tokenId.slice(0, 8)}: ${built.size.amt} units for ${built.size.got} nanoERG to its owner${built.size.last ? ", the last leg" : ""}, ${built.size.payout} nanoERG to you`,
         bounty: built.size.payout,
         tx: built.tx,
       });

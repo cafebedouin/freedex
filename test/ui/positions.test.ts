@@ -33,7 +33,13 @@ describe("positions", () => {
     await connect();
     tab("bonds");
     await settle();
+    expect(before("open-order", "bonds-mine")).toBe(true); // the request form first, then the positions
     expect(before("bonds-mine", "orders-list")).toBe(true);
+    // the market lists are collapsed, their counts on the summary line
+    expect(el<HTMLDetailsElement>("orders-details").open).toBe(false);
+    expect(el<HTMLDetailsElement>("bonds-details").open).toBe(false);
+    expect(text("orders-count")).toBe("1 open");
+    expect(text("bonds-count")).toBe("0 live");
     const mine = el("bonds-mine");
     expect([...mine.querySelectorAll("h3")].map((h) => h.textContent)).toEqual([
       "Your loan requests",

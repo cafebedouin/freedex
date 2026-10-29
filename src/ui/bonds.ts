@@ -155,11 +155,14 @@ export function mountBonds(store: Store) {
         if (!mine.length) mine.push("none");
       }
       $("bonds-mine").replaceChildren(...mine);
+      // the market, collapsed as the Limit orders tab's groups are, the count on the summary line
       const others = orders.filter((r) => !myOrders.includes(r));
+      $("orders-count").textContent = `${others.length} open`;
       $("orders-list").replaceChildren(
         others.length ? table(ORDER_HEADS, others.map(orderRow)) : "no open loan requests",
       );
       const otherBonds = bonds.filter((r) => !myBonds.includes(r));
+      $("bonds-count").textContent = `${otherBonds.length} live`;
       $("bonds-list").replaceChildren(
         otherBonds.length
           ? table(
