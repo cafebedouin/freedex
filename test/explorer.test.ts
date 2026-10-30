@@ -42,7 +42,7 @@ describe("retry with backoff inside the failover loop", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        const base = url.startsWith(A) ? A : B;
+        const base = new URL(url).origin === A ? A : B;
         const n = (counts.get(base) ?? 0) + 1;
         counts.set(base, n);
         calls.push(`${base === A ? "a" : "b"}${n}`);
