@@ -1,9 +1,9 @@
 // The ternary searches in babel.ts and machina-arb.ts against a brute-force maximum on small pools.
 import { describe, expect, it } from "vitest";
-import type { PoolView } from "../src/amm";
-import { sizeBabelTake, type BabelView } from "../src/babel";
-import { sizeOrderTake } from "../src/machina-arb";
-import { FEE, type OrderView } from "../src/orders";
+import type { PoolView } from "../src/protocols/ergodex/amm";
+import { sizeBabelTake, type BabelView } from "../src/protocols/babel/babel";
+import { sizeOrderTake } from "../src/protocols/machina/machina-arb";
+import { FEE, type OrderView } from "../src/protocols/machina/orders";
 
 const pool = (x: bigint, y: bigint, feeNum = 997n): PoolView => ({
   boxId: "",

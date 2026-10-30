@@ -21,12 +21,19 @@ export function tdCode(full: string, short: string, suffix = ""): HTMLTableCellE
   return el;
 }
 
+/** A header row; an empty head is the actions column, named for screen readers only. */
 export function thead(table: HTMLTableElement, heads: string[]) {
   const h = document.createElement("thead");
   const tr = document.createElement("tr");
   for (const t of heads) {
     const th = document.createElement("th");
-    th.textContent = t;
+    if (t) th.textContent = t;
+    else {
+      const span = document.createElement("span");
+      span.className = "sr-only";
+      span.textContent = "actions";
+      th.append(span);
+    }
     tr.append(th);
   }
   h.append(tr);

@@ -1,5 +1,5 @@
 // Compile contracts/Call.es and contracts/Put.es with Fleet's compiler to an ErgoTree v1 with segregated
-// constants, and print what src/option.ts pins: the tree hex, its byte size and the template's SHA-256.
+// constants, and print what src/registry.json pins (option-call, option-put): the tree hex, its byte size and the template's SHA-256.
 // node scripts/compile-option.ts
 // test/hashes.test.ts compiles the same sources the same way and checks them against the pinned trees.
 import { readFileSync } from "node:fs";

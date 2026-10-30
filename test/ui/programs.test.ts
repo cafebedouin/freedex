@@ -4,7 +4,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { estimateBoxSize } from "@fleet-sdk/serializer";
-import { CLOCK_SELL_TREE, CLOCK_TREE, MIN_VALUE_PER_BYTE, STORAGE_FEE_FACTOR, describeClock } from "../../src/clock";
+import {
+  CLOCK_SELL_TREE,
+  CLOCK_TREE,
+  MIN_VALUE_PER_BYTE,
+  STORAGE_FEE_FACTOR,
+  describeClock,
+} from "../../src/protocols/clock/clock";
 import { makeWorld, SIGUSD } from "./fixtures";
 import {
   choose,

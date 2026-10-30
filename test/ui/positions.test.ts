@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // Bonds and Escrow tabs: the visitor's own rows first, before the market.
 import { beforeEach, describe, expect, it } from "vitest";
-import { describeBond } from "../../src/bonds";
+import { describeBond } from "../../src/protocols/sigmafi/bonds";
 import { makeWorld } from "./fixtures";
 import { column, connect, el, installFetch, installWallet, loadPage, noWallet, settle, tab, text } from "./harness";
 

@@ -1,7 +1,7 @@
 // List the ErgoDEX v1 ERG pools on mainnet by the template hash the page uses. node scripts/pools.ts
 import { ErgoTree } from "@fleet-sdk/core";
 import { hex, sha256 } from "@fleet-sdk/crypto";
-import { POOL_TREE, describePool } from "../src/amm.ts";
+import { POOL_TREE, describePool } from "../src/protocols/ergodex/amm.ts";
 import { Explorer, POOL_TEMPLATE_SHA256 } from "../src/explorer.ts";
 console.log(
   "tree bytes",

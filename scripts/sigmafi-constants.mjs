@@ -1,7 +1,8 @@
 // Extract SigmaFi's deployed contract hex from its MIT-licensed UI source (capt-nemo429/sigmafi-ui,
-// src/offchain/plugins.ts) into src/sigmafi-contracts.json, and count the live boxes under each template.
+// src/offchain/plugins.ts) and print it in the shape src/registry.json keeps (the sigmafi-* entries), with each
+// template's SHA-256, and count the live boxes under each template. The registry is edited by hand from this output.
 //   node scripts/sigmafi-constants.mjs <path/to/plugins.ts> [--count]
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { ErgoTree } from "@fleet-sdk/core";
 import { hex, sha256 } from "@fleet-sdk/crypto";
 const src = readFileSync(process.argv[2], "utf8");
@@ -38,15 +39,31 @@ const sample = {
 };
 const templateSha256 = {};
 for (const [k, tree] of Object.entries(sample)) templateSha256[k] = hex.encode(sha256(new ErgoTree(tree).template));
-writeFileSync(
-  new URL("../src/sigmafi-contracts.json", import.meta.url),
+const asTemplate = (parts, names) => parts.map((p, i) => (i < names.length ? p + `{${names[i]}}` : p)).join("");
+console.log(
   JSON.stringify(
-    { source: "capt-nemo429/sigmafi-ui src/offchain/plugins.ts (MIT), read 2026-10-29", ...c, templateSha256 },
+    {
+      "sigmafi-order-on-close-erg": { tree: c.orderOnCloseErg, templateSha256: templateSha256.orderOnCloseErg },
+      "sigmafi-order-on-close-token": {
+        template: asTemplate(c.orderOnCloseTokenTemplate, ["tokenId", "bondTreeBlake2b256"]),
+        templateSha256: templateSha256.orderOnCloseToken,
+      },
+      "sigmafi-order-fixed-erg": { tree: c.orderFixedErg, templateSha256: templateSha256.orderFixedErg },
+      "sigmafi-order-fixed-token": {
+        template: asTemplate(c.orderFixedTokenTemplate, ["tokenId", "bondTreeBlake2b256"]),
+        templateSha256: templateSha256.orderFixedToken,
+      },
+      "sigmafi-bond-erg": { tree: c.bondErg, templateSha256: templateSha256.bondErg },
+      "sigmafi-bond-token": {
+        template: asTemplate(c.bondTokenTemplate, ["tokenId"]),
+        templateSha256: templateSha256.bondToken,
+      },
+      "sigmafi-dev-fee-recipient": { tree: c.devFeeTree },
+    },
     null,
     1,
   ),
 );
-console.log("wrote src/sigmafi-contracts.json");
 if (process.argv.includes("--count")) {
   for (const [k, h] of Object.entries(templateSha256)) {
     const r = await fetch("https://api.ergoplatform.com/api/v1/boxes/unspent/search?limit=100", {

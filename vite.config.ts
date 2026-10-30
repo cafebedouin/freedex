@@ -7,5 +7,5 @@ export default defineConfig({
   // fetched asset instantiated at load, in the chunk that is only imported when the phone path is chosen
   plugins: [wasm()],
   build: { target: "esnext", outDir: "dist", sourcemap: true },
-  test: { environment: "node", include: ["test/**/*.test.ts"] },
+  test: { environment: "node", include: ["test/**/*.test.ts", "src/**/*.test.ts"] },
 });

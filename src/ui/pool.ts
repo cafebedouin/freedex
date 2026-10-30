@@ -14,9 +14,9 @@ import {
   lpSupplyT2T,
   redeemQuote,
   redeemQuoteT2T,
-} from "../amm";
+} from "../protocols/ergodex/amm";
 import type { PoolEntry, T2TPoolEntry } from "../explorer";
-import { FEE } from "../orders";
+import { FEE } from "../protocols/machina/orders";
 import tokenlist from "../tokenlist.json" with { type: "json" };
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, dl, err, log, option } from "./dom";
@@ -108,7 +108,12 @@ export function mountPool(store: Store) {
     const ps = pairSides();
     if (!ps) {
       dl($("lp-info"), [
-        ["Pool", "no pool listed for this pair yet (the explorer is still loading, or the pair has none)"],
+        [
+          "Pool",
+          store.state.pools.length === 0 && store.state.t2tPools.length === 0
+            ? store.explorerLabel()
+            : "no pool listed for this pair",
+        ],
       ]);
       return;
     }
@@ -243,14 +248,24 @@ export function mountPool(store: Store) {
       if (!ps) throw new Error("pick a pair");
       const typed = (lpSideTyped === "a" ? aEl : bEl).value;
       const user = store.wallet!.changeAddress;
+      const what = (aIn: bigint, bIn: bigint, lpOut: bigint) =>
+        `Add ${formatUnits(aIn, store.decimalsOf(ps.a))} ${store.nameOf(ps.a)} and ${formatUnits(bIn, store.decimalsOf(ps.b))} ${store.nameOf(ps.b)} to the pool for ${lpOut} LP tokens, miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`;
       if (ps.n2t) {
         const fresh = await store.explorer.poolByNft(ps.n2t.box.assets[0].tokenId);
-        const [ergIn] = depositAmounts(store, { ...ps, n2t: fresh }, lpSideTyped, typed);
-        await send(store, (height, inputs) => buildDeposit({ height, inputs, user, poolBox: fresh.box, ergIn }));
+        const [ergIn, tokenIn, lpOut] = depositAmounts(store, { ...ps, n2t: fresh }, lpSideTyped, typed);
+        await send(
+          store,
+          (height, inputs) => buildDeposit({ height, inputs, user, poolBox: fresh.box, ergIn }),
+          what(ergIn, tokenIn, lpOut),
+        );
       } else {
         const fresh = await store.explorer.t2tPoolByNft(ps.t2t!.box.assets[0].tokenId);
-        const [xIn] = depositAmounts(store, { ...ps, t2t: fresh }, lpSideTyped, typed);
-        await send(store, (height, inputs) => buildDepositT2T({ height, inputs, user, poolBox: fresh.box, xIn }));
+        const [xIn, yIn, lpOut] = depositAmounts(store, { ...ps, t2t: fresh }, lpSideTyped, typed);
+        await send(
+          store,
+          (height, inputs) => buildDepositT2T({ height, inputs, user, poolBox: fresh.box, xIn }),
+          what(xIn, yIn, lpOut),
+        );
       }
       aEl.value = "";
       bEl.value = "";
@@ -265,12 +280,24 @@ export function mountPool(store: Store) {
       if (!ps) throw new Error("pick a pair");
       const lpIn = parseUnits(lpInEl.value, 0);
       const user = store.wallet!.changeAddress;
+      const what = (a: bigint, b: bigint) =>
+        `Remove ${lpIn} LP tokens from the pool for ${formatUnits(a, store.decimalsOf(ps.a))} ${store.nameOf(ps.a)} and ${formatUnits(b, store.decimalsOf(ps.b))} ${store.nameOf(ps.b)}, miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`;
       if (ps.n2t) {
         const fresh = await store.explorer.poolByNft(ps.n2t.box.assets[0].tokenId);
-        await send(store, (height, inputs) => buildRedeem({ height, inputs, user, poolBox: fresh.box, lpIn }));
+        const q = redeemQuote(describePool(fresh.box), lpIn);
+        await send(
+          store,
+          (height, inputs) => buildRedeem({ height, inputs, user, poolBox: fresh.box, lpIn }),
+          what(q.ergOut, q.tokenOut),
+        );
       } else {
         const fresh = await store.explorer.t2tPoolByNft(ps.t2t!.box.assets[0].tokenId);
-        await send(store, (height, inputs) => buildRedeemT2T({ height, inputs, user, poolBox: fresh.box, lpIn }));
+        const q = redeemQuoteT2T(describeT2TPool(fresh.box), lpIn);
+        await send(
+          store,
+          (height, inputs) => buildRedeemT2T({ height, inputs, user, poolBox: fresh.box, lpIn }),
+          what(q.xOut, q.yOut),
+        );
       }
       lpInEl.value = "";
       setTimeout(() => void store.loadPools().then(renderPool), 3000);

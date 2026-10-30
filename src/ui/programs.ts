@@ -22,10 +22,11 @@ import {
   type ClockSellProgram,
   type ClockSide,
   type ClockView,
-} from "../clock";
-import { FEE } from "../orders";
+} from "../protocols/clock/clock";
+import { FEE } from "../protocols/machina/orders";
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, dl, err, log, option, table, td, tdCode } from "./dom";
+import { listing } from "./listing";
 import { OTHER, type Store } from "./store";
 import { send } from "./wallet";
 
@@ -35,6 +36,7 @@ const GENERATOR = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f
 
 export function mountPrograms(store: Store) {
   const reload = () => setTimeout(() => void loadPrograms(), 3000);
+  const state = listing(store, $("programs-list"), () => void loadPrograms());
   let height = 0;
   const side = () => $<HTMLSelectElement>("prog-side").value as ClockSide;
 
@@ -194,7 +196,11 @@ export function mountPrograms(store: Store) {
       const b = document.createElement("button");
       b.textContent = "cancel";
       b.onclick = () =>
-        send(store, (h) => buildCancelClock({ height: h, owner: wallet.changeAddress, clockBox: box }))
+        send(
+          store,
+          (h) => buildCancelClock({ height: h, owner: wallet.changeAddress, clockBox: box }),
+          `Cancel the ${v.side} program on ${name}: ${v.side === "sell" ? `${formatUnits(v.tokens, dec)} ${name} and ` : ""}${erg} back to you, less the miner fee`,
+        )
           .then(reload)
           .catch((e) => log(`cancel failed: ${err(e)}`));
       actions.append(b);
@@ -206,6 +212,7 @@ export function mountPrograms(store: Store) {
   const HEADS = ["Token", "Side", "Slice", "Interval", "Next due", "Legs left", "In the box", "Owner", ""];
 
   async function loadPrograms() {
+    state.start();
     try {
       const [buys, sells, h] = await Promise.all([
         store.explorer.byTemplate(CLOCK_TEMPLATE_SHA256, 500),
@@ -226,11 +233,12 @@ export function mountPrograms(store: Store) {
       $("programs-mine").replaceChildren(
         !store.wallet ? "connect a wallet to see your programs" : mine.length ? table(HEADS, mine.map(row)) : "none",
       );
+      state.done();
       $("programs-list").replaceChildren(
         others.length ? table(HEADS, others.map(row)) : "no other open programs on either contract",
       );
     } catch (e) {
-      $("programs-list").textContent = `could not load: ${err(e)}`;
+      state.fail(e);
     }
   }
 
@@ -264,10 +272,19 @@ export function mountPrograms(store: Store) {
       if (legs * f.program.interval > RENT_PERIOD)
         throw new Error(`the schedule must end within ${RENT_PERIOD} blocks (${RENT_PERIOD / BLOCKS_PER_DAY} days)`);
       const fresh = await store.explorer.poolByNft(f.program.poolBox.assets[0].tokenId);
-      await send(store, (height, inputs) =>
+      const name = store.nameOf(f.program.tokenId);
+      const dec = store.decimalsOf(f.program.tokenId);
+      const what =
         f.side === "buy"
-          ? buildCreateClock({ ...f.program, poolBox: fresh.box, height, inputs })
-          : buildCreateClockSell({ ...f.program, poolBox: fresh.box, height, inputs }),
+          ? `Start a buy program: ${legs} legs of ${formatUnits(f.program.slice, ERG_DECIMALS)} ERG into the ${name} pool, one every ${describeInterval(f.program.interval)}, ${formatUnits(sizeProgram(f.program).value, ERG_DECIMALS)} ERG locked, ${formatUnits(f.program.executorFee, ERG_DECIMALS)} ERG per leg to whoever runs it`
+          : `Start a sell program: ${legs} legs of ${formatUnits(f.program.slice, dec)} ${name} into its pool, one every ${describeInterval(f.program.interval)}, ${formatUnits(f.program.tokens, dec)} ${name} and ${formatUnits(sizeProgramSell(f.program).value, ERG_DECIMALS)} ERG locked, ${formatUnits(f.program.executorFee, ERG_DECIMALS)} ERG per leg to whoever runs it`;
+      await send(
+        store,
+        (height, inputs) =>
+          f.side === "buy"
+            ? buildCreateClock({ ...f.program, poolBox: fresh.box, height, inputs })
+            : buildCreateClockSell({ ...f.program, poolBox: fresh.box, height, inputs }),
+        what,
       );
       reload();
     } catch (e) {

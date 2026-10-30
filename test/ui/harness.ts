@@ -19,6 +19,8 @@ export interface World {
   tokens: Record<string, TokenMeta>;
   /** the first explorer base refuses every request, so the page falls back to the second */
   failFirstBase?: boolean;
+  /** every explorer base refuses every request (set and cleared by a test) */
+  failAll?: boolean;
   /** node JSON of transactions submitted through the explorer's mempool endpoint (the keyless upkeep) */
   submitted: string[];
   /** ids the explorer reports in the mempool (by address) or in a block, for the phone path's wait */
@@ -56,7 +58,7 @@ export function explorerBox(b: Box<bigint>, tokens: Record<string, TokenMeta>) {
 export function installFetch(w: World) {
   const f = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-    if (w.failFirstBase && url.origin === EXPLORERS[0]) throw new TypeError("fetch failed");
+    if (w.failAll || (w.failFirstBase && url.origin === EXPLORERS[0])) throw new TypeError("fetch failed");
     const path = url.pathname;
     let status = 200;
     let body: unknown = {};
@@ -155,6 +157,10 @@ export async function loadPage() {
   document.close();
   localStorage.clear();
   vi.resetModules();
+  // the explorer's retry waits (1 s, 2 s, 4 s) are zeroed for the page under test: the array is the module's own,
+  // mutated in place before the page boots, so a failing backend fails over within a settle
+  const { RETRY_DELAYS_MS } = await import("../../src/explorer");
+  RETRY_DELAYS_MS.fill(0);
   await import("../../src/main.ts");
   await settle();
 }

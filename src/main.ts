@@ -45,7 +45,15 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("nav [role=tab]")) 
 
 // ---- boot --------------------------------------------------------------------------------------
 
-void store.loadPools();
+// the pool listing is what the Swap and Pool tabs stand on: keep asking until it loads (the explorer retries each
+// request itself; this is the slower loop between refreshes)
+const POOLS_RETRY_MS = 30_000;
+const loadPools = () => {
+  void store.loadPools().then((ok) => {
+    if (!ok) setTimeout(loadPools, POOLS_RETRY_MS);
+  });
+};
+loadPools();
 void store.loadBank().catch((e) => log(`bank: ${err(e)}`));
 void orders.load();
 explorer

@@ -1,7 +1,7 @@
 // Regenerate the static token list: every token whose deepest ErgoDEX v1 pool holds at least MIN_ERG.
 //   node scripts/tokens.ts > src/tokenlist.json
 import { Explorer } from "../src/explorer.ts";
-import { describePool } from "../src/amm.ts";
+import { describePool } from "../src/protocols/ergodex/amm.ts";
 
 const MIN_ERG = 100n * 1_000_000_000n;
 const pools = await new Explorer().pools(500);

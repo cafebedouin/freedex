@@ -4,7 +4,7 @@
 // grouped by token with its premium and expiry, which anyone may buy.
 import type { Box } from "@fleet-sdk/common";
 import { ErgoAddress } from "@fleet-sdk/core";
-import { BLOCKS_PER_DAY, RENT_PERIOD, describeInterval } from "../clock";
+import { BLOCKS_PER_DAY, RENT_PERIOD, describeInterval } from "../protocols/clock/clock";
 import {
   CALL_TEMPLATE_SHA256,
   PUT_TEMPLATE_SHA256,
@@ -20,9 +20,10 @@ import {
   type OptionSide,
   type OptionTerms,
   type OptionView,
-} from "../option";
+} from "../protocols/option/option";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "../units";
 import { $, dl, err, h, log, option, table, td, tdCode } from "./dom";
+import { listing } from "./listing";
 import { OTHER, type Store } from "./store";
 import { send } from "./wallet";
 
@@ -31,6 +32,7 @@ const GENERATOR = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f
 
 export function mountOptions(store: Store) {
   const reload = () => setTimeout(() => void loadOptions(), 3000);
+  const state = listing(store, $("options-list"), () => void loadOptions());
   let height = 0;
   const side = () => $<HTMLSelectElement>("opt-side").value as OptionSide;
 
@@ -154,26 +156,41 @@ export function mountOptions(store: Store) {
     );
     const actions = document.createElement("td");
     const wallet = store.wallet;
-    const button = (label: string, build: Parameters<typeof send>[1]) => {
+    const button = (label: string, build: Parameters<typeof send>[1], what: string) => {
       const b = document.createElement("button");
       b.textContent = label;
       b.onclick = () =>
-        send(store, build)
+        send(store, build, what)
           .then(reload)
           .catch((e) => log(`${label} failed: ${err(e)}`));
       actions.append(b, " ");
     };
+    const amount = `${formatUnits(v.amount, dec)} ${name}`;
+    const strikeTotal = `${formatUnits(v.strikeTotal, ERG_DECIMALS)} ERG`;
+    const premium = `${formatUnits(v.premium, ERG_DECIMALS)} ERG`;
+    const underlying =
+      v.side === "call"
+        ? `${amount} and the ${formatUnits(v.value, ERG_DECIMALS)} ERG reserve`
+        : `the ${formatUnits(v.value, ERG_DECIMALS)} ERG collateral`;
     if (wallet && !writer && canBuy(v, height))
-      button("pay the premium and buy", (hh, inputs) =>
-        buildBuy({ height: hh, inputs, buyer: wallet.changeAddress, optionBox: box }),
+      button(
+        "pay the premium and buy",
+        (hh, inputs) => buildBuy({ height: hh, inputs, buyer: wallet.changeAddress, optionBox: box }),
+        `Pay the ${premium} premium to the writer for this ${v.side} on ${amount} at ${priceToErgPerToken(v.strike, dec)} ERG per token, exercisable until height ${v.expiry}`,
       );
     if (wallet && buyer && canExercise(v, height, wallet.changeAddress.encode()))
-      button("exercise", (hh, inputs) =>
-        buildExercise({ height: hh, inputs, buyer: wallet.changeAddress, optionBox: box }),
+      button(
+        "exercise",
+        (hh, inputs) => buildExercise({ height: hh, inputs, buyer: wallet.changeAddress, optionBox: box }),
+        v.side === "call"
+          ? `Exercise the call: pay ${strikeTotal} to the writer for ${amount}`
+          : `Exercise the put: deliver ${amount} to the writer for ${strikeTotal}`,
       );
     if (wallet && writer && canReclaim(v, height))
-      button(v.expiry <= height ? "reclaim" : "cancel", (hh, inputs) =>
-        buildReclaim({ height: hh, inputs, writer: wallet.changeAddress, optionBox: box }),
+      button(
+        v.expiry <= height ? "reclaim" : "cancel",
+        (hh, inputs) => buildReclaim({ height: hh, inputs, writer: wallet.changeAddress, optionBox: box }),
+        `${v.expiry <= height ? "Reclaim the expired" : "Cancel the unsold"} ${v.side}: ${underlying} back to you`,
       );
     tr.append(actions);
     return tr;
@@ -182,6 +199,7 @@ export function mountOptions(store: Store) {
   const HEADS = ["Token", "Side", "Amount", "Strike", "Premium", "Expiry", "Writer", "Buyer", ""];
 
   async function loadOptions() {
+    state.start();
     try {
       const [calls, puts, hh] = await Promise.all([
         store.explorer.byTemplate(CALL_TEMPLATE_SHA256, 500),
@@ -205,6 +223,7 @@ export function mountOptions(store: Store) {
       const groups = new Map<string, Row[]>();
       for (const r of others) groups.set(r.v.tokenId, [...(groups.get(r.v.tokenId) ?? []), r]);
       const list = $("options-list");
+      state.done();
       list.replaceChildren();
       if (groups.size === 0) list.textContent = "no open offers on either contract";
       for (const [tokenId, rows] of groups) {
@@ -213,7 +232,7 @@ export function mountOptions(store: Store) {
       }
       quoteWrite();
     } catch (e) {
-      $("options-list").textContent = `could not load: ${err(e)}`;
+      state.fail(e);
     }
   }
 
@@ -239,7 +258,15 @@ export function mountOptions(store: Store) {
         throw new Error(`the expiry must be within ${RENT_PERIOD} blocks (${RENT_PERIOD / BLOCKS_PER_DAY} days)`);
       const tokenId = $<HTMLInputElement>("opt-token").value.trim().toLowerCase();
       await store.tokenInfo(tokenId);
-      await send(store, (hh, inputs) => buildWrite({ ...readForm(hh), height: hh, inputs }));
+      const t = readForm(height);
+      const dec = store.decimalsOf(t.tokenId);
+      const name = store.nameOf(t.tokenId);
+      const s = sizeWrite(t, height);
+      const what =
+        t.side === "call"
+          ? `Write a call: lock ${formatUnits(t.amount, dec)} ${name} and a ${formatUnits(s.rentReserve, ERG_DECIMALS)} ERG rent reserve; the buyer may buy them for ${formatUnits(t.strike * t.amount, ERG_DECIMALS)} ERG until height ${t.expiry}, paying you ${formatUnits(t.premium, ERG_DECIMALS)} ERG now`
+          : `Write a put: lock ${formatUnits(t.strike * t.amount, ERG_DECIMALS)} ERG as collateral; the buyer may sell you ${formatUnits(t.amount, dec)} ${name} for it until height ${t.expiry}, paying you ${formatUnits(t.premium, ERG_DECIMALS)} ERG now`;
+      await send(store, (hh, inputs) => buildWrite({ ...readForm(hh), height: hh, inputs }), what);
       reload();
     } catch (e) {
       log(`write failed: ${err(e)}`);

@@ -1,0 +1,14 @@
+# One grouped pull request a month for every npm dependency, so Dependabot costs at most one pull request's CI
+# (the pages build, the browser job and the CodeQL run) a month. Security updates are not enabled separately.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      all-npm:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"

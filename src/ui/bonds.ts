@@ -12,10 +12,11 @@ import {
   devFee,
   type BondView,
   type LoanView,
-} from "../bonds";
+} from "../protocols/sigmafi/bonds";
 import tokenlist from "../tokenlist.json" with { type: "json" };
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, err, h, log, table, td, tdCode, option } from "./dom";
+import { listing } from "./listing";
 import { ERG, type Store } from "./store";
 import { send } from "./wallet";
 
@@ -33,6 +34,7 @@ export function mountBonds(store: Store) {
   }
 
   const reload = () => setTimeout(() => void loadBonds(), 3000);
+  const state = listing(store, $("orders-list"), () => void loadBonds());
 
   function orderRow({ box, v }: OrderRow): HTMLTableRowElement {
     const tr = document.createElement("tr");
@@ -51,11 +53,17 @@ export function mountBonds(store: Store) {
     if (wallet) {
       const b = document.createElement("button");
       b.textContent = mine ? "cancel" : `lend (+${amountText(v.principalId, devFee(v.principal))} dev fee)`;
+      const what = mine
+        ? `Cancel your loan request: the collateral (${collateralText(v)}) back to you`
+        : `Lend ${amountText(v.principalId, v.principal)} plus a ${amountText(v.principalId, devFee(v.principal))} developer fee, against ${collateralText(v)}, to be repaid ${amountText(v.principalId, v.repayment)} within ${v.term} blocks`;
       b.onclick = () =>
-        send(store, (height, inputs) =>
-          mine
-            ? buildCancelOrder({ height, inputs, borrower: wallet.changeAddress, orderBox: box })
-            : buildLend({ height, inputs, lender: wallet.changeAddress, orderBox: box }),
+        send(
+          store,
+          (height, inputs) =>
+            mine
+              ? buildCancelOrder({ height, inputs, borrower: wallet.changeAddress, orderBox: box })
+              : buildLend({ height, inputs, lender: wallet.changeAddress, orderBox: box }),
+          what,
         )
           .then(reload)
           .catch((e) => log(`${mine ? "cancel" : "lend"} failed: ${err(e)}`));
@@ -84,7 +92,11 @@ export function mountBonds(store: Store) {
       const b = document.createElement("button");
       b.textContent = "repay";
       b.onclick = () =>
-        send(store, (hh, inputs) => buildRepay({ height: hh, inputs, borrower: wallet.changeAddress, bondBox: box }))
+        send(
+          store,
+          (hh, inputs) => buildRepay({ height: hh, inputs, borrower: wallet.changeAddress, bondBox: box }),
+          `Repay ${amountText(v.principalId, v.repayment)} to the lender; your collateral (${collateralText(v)}) back to you`,
+        )
           .then(reload)
           .catch((e) => log(`repay failed: ${err(e)}`));
       actions.append(b);
@@ -93,8 +105,10 @@ export function mountBonds(store: Store) {
       const b = document.createElement("button");
       b.textContent = lender ? "take collateral" : "hand collateral to the lender";
       b.onclick = () =>
-        send(store, (hh, inputs) =>
-          buildLiquidate({ height: hh, inputs, recipient: wallet.changeAddress, bondBox: box }),
+        send(
+          store,
+          (hh, inputs) => buildLiquidate({ height: hh, inputs, recipient: wallet.changeAddress, bondBox: box }),
+          `${lender ? "Take" : "Hand to the lender"} the collateral (${collateralText(v)}) of the bond that matured at height ${v.maturity}; you pay the miner fee`,
         )
           .then(reload)
           .catch((e) => log(`liquidate failed: ${err(e)}`));
@@ -108,6 +122,8 @@ export function mountBonds(store: Store) {
   const BOND_HEADS = ["Repayment", "Matures", "Collateral", "Borrower", "Lender", ""];
 
   async function loadBonds() {
+    state.start();
+    $("bonds-list").textContent = store.explorerLabel();
     try {
       const ex = store.explorer;
       const [o1, o2, b1, b2] = await Promise.all([
@@ -175,8 +191,10 @@ export function mountBonds(store: Store) {
       const sel = $<HTMLSelectElement>("loan-token");
       if (sel.options.length <= 1)
         for (const t of tokenlist.tokens) sel.append(option(t.name || t.id.slice(0, 8), t.id));
+      state.done();
     } catch (e) {
-      $("orders-list").textContent = `could not load: ${err(e)}`;
+      state.fail(e);
+      $("bonds-list").textContent = "";
     }
   }
 
@@ -197,18 +215,22 @@ export function mountBonds(store: Store) {
         : [];
       if (collateralErg <= 0n && collateralTokens.length === 0) throw new Error("name some collateral");
       const borrower = store.wallet!.changeAddress;
-      await send(store, (height, inputs) =>
-        buildOpenOrder({
-          height,
-          inputs,
-          borrower,
-          principalId,
-          principal,
-          repayment,
-          term,
-          collateralErg,
-          collateralTokens,
-        }),
+      const collateral = collateralText({ collateralErg, collateralTokens } as LoanView);
+      await send(
+        store,
+        (height, inputs) =>
+          buildOpenOrder({
+            height,
+            inputs,
+            borrower,
+            principalId,
+            principal,
+            repayment,
+            term,
+            collateralErg,
+            collateralTokens,
+          }),
+        `Request a loan of ${amountText(principalId, principal)}, repaying ${amountText(principalId, repayment)} within ${term} blocks of being funded, with ${collateral} locked as collateral`,
       );
       reload();
     } catch (e) {

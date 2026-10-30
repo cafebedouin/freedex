@@ -1,11 +1,21 @@
 // The Limit orders tab: Machina E2T limit orders and EIP-31 Babel boxes (standing bids anyone sells tokens into),
 // grouped by token, best price first on each side; place, fill and close.
 import type { Box } from "@fleet-sdk/common";
-import { babelCapacity, buildFillBabel, describeBabel } from "../babel";
-import { buildClose, buildCreate, buildFill, capacity, describe, type OwnerSide, type TakerAction } from "../orders";
+import { babelCapacity, buildFillBabel, describeBabel } from "../protocols/babel/babel";
+import {
+  buildClose,
+  buildCreate,
+  buildFill,
+  capacity,
+  describe,
+  type OwnerSide,
+  type TakerAction,
+} from "../protocols/machina/orders";
 import tokenlist from "../tokenlist.json" with { type: "json" };
+import { FEE } from "../protocols/machina/orders";
 import { ERG_DECIMALS, ergPerTokenToPrice, formatUnits, parseUnits, priceToErgPerToken } from "../units";
 import { $, err, h, log, table, td, tdCode, option } from "./dom";
+import { listing } from "./listing";
 import type { Store } from "./store";
 import { send } from "./wallet";
 
@@ -90,11 +100,14 @@ export function groupListings(ls: Listing[]): Group[] {
 }
 
 export function mountOrders(store: Store) {
+  const state = listing(store, $("orders"), () => void loadOrders());
   async function loadOrders() {
+    state.start();
     try {
       await store.loadOrders();
+      state.done();
     } catch (e) {
-      $("orders").textContent = `could not load orders: ${err(e)}`;
+      state.fail(e);
     }
   }
   const reload = () => setTimeout(() => void loadOrders(), 3000);
@@ -113,11 +126,17 @@ export function mountOrders(store: Store) {
     );
     const actions = document.createElement("td");
     const wallet = store.wallet;
+    const name = store.nameOf(l.tokenId);
+    const perToken = `${priceToErgPerToken(l.price, decimals)} ERG per token`;
     if (wallet && l.kind === "machina" && mine) {
       const b = document.createElement("button");
       b.textContent = "close";
       b.onclick = () =>
-        send(store, (height, inputs) => buildClose({ height, inputs, owner: wallet.changeAddress, orderBox: l.box }))
+        send(
+          store,
+          (height, inputs) => buildClose({ height, inputs, owner: wallet.changeAddress, orderBox: l.box }),
+          `Close your order on ${name}: ${l.takerAction === "buy" ? `${formatUnits(l.capacity, decimals)} ${name}` : `${formatUnits(l.value, ERG_DECIMALS)} ERG`} back to you`,
+        )
           .then(reload)
           .catch((e) => log(`close failed: ${err(e)}`));
       actions.append(b);
@@ -125,6 +144,7 @@ export function mountOrders(store: Store) {
       const amount = document.createElement("input");
       amount.size = 10;
       amount.placeholder = formatUnits(l.capacity, decimals);
+      amount.setAttribute("aria-label", `${name} to ${l.takerAction === "buy" ? "buy from" : "sell into"} this order`);
       const b = document.createElement("button");
       b.textContent = l.takerAction === "buy" ? "buy" : "sell";
       b.onclick = () => {
@@ -136,7 +156,12 @@ export function mountOrders(store: Store) {
                   buildFillBabel({ height, inputs, taker: wallet.changeAddress, babelBox: l.box, tokenAmount: n })
               : (height: number, inputs: Box<string>[]) =>
                   buildFill({ height, inputs, taker: wallet.changeAddress, orderBox: l.box, tokenAmount: n });
-          void send(store, build)
+          const erg = formatUnits(n * l.price, ERG_DECIMALS);
+          const what =
+            l.takerAction === "buy"
+              ? `Buy ${formatUnits(n, decimals)} ${name} from this order for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`
+              : `Sell ${formatUnits(n, decimals)} ${name} into this ${l.kind === "babel" ? "Babel bid" : "order"} for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`;
+          void send(store, build, what)
             .then(reload)
             .catch((e) => log(`fill failed: ${err(e)}`));
         } catch (e) {
@@ -210,14 +235,21 @@ export function mountOrders(store: Store) {
       const t = await store.tokenInfo(tokenId);
       const price = ergPerTokenToPrice($<HTMLInputElement>("price").value, t.decimals);
       const amountText = $<HTMLInputElement>("amount").value;
-      const params =
+      const params: { tokenAmount?: bigint; ergAmount?: bigint } =
         side === "sell-tokens"
           ? { tokenAmount: parseUnits(amountText, t.decimals) }
           : { ergAmount: parseUnits(amountText, ERG_DECIMALS) };
       log(`${side} ${t.name || tokenId.slice(0, 10)} at ${price} nanoERG per unit`);
       const owner = store.wallet!.changeAddress;
-      await send(store, (height, inputs) =>
-        buildCreate({ height, inputs, owner, side, quoteTokenId: tokenId, price, ...params }),
+      const name = t.name || tokenId.slice(0, 10);
+      const what =
+        side === "sell-tokens"
+          ? `Place a limit order to sell ${formatUnits(params.tokenAmount!, t.decimals)} ${name} at ${priceToErgPerToken(price, t.decimals)} ERG per token`
+          : `Place a limit order to buy ${name} with ${formatUnits(params.ergAmount!, ERG_DECIMALS)} ERG at ${priceToErgPerToken(price, t.decimals)} ERG per token`;
+      await send(
+        store,
+        (height, inputs) => buildCreate({ height, inputs, owner, side, quoteTokenId: tokenId, price, ...params }),
+        what,
       );
       reload();
     } catch (e) {

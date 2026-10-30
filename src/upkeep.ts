@@ -5,14 +5,19 @@ import type { Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import type { ErgoAddress } from "@fleet-sdk/core";
 import { blake2b256, hex } from "@fleet-sdk/crypto";
 import { serializeTransaction } from "@fleet-sdk/serializer";
-import { describePool } from "./amm.ts";
-import { buildBabelTake, describeBabel } from "./babel.ts";
-import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./bonds.ts";
-import { CLOCK_SELL_TEMPLATE_SHA256, CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./clock.ts";
+import { describePool } from "./protocols/ergodex/amm.ts";
+import { buildBabelTake, describeBabel } from "./protocols/babel/babel.ts";
+import { SIGMAFI_TEMPLATES, describeBond, type BondView } from "./protocols/sigmafi/bonds.ts";
+import { CLOCK_SELL_TEMPLATE_SHA256, CLOCK_TEMPLATE_SHA256, buildLeg, describeClock } from "./protocols/clock/clock.ts";
 import type { Explorer } from "./explorer.ts";
-import { buildOrderTake } from "./machina-arb.ts";
-import { CALL_TEMPLATE_SHA256, PUT_TEMPLATE_SHA256, describeOption, type OptionView } from "./option.ts";
-import { FEE, describe as describeOrder } from "./orders.ts";
+import { buildOrderTake } from "./protocols/machina/machina-arb.ts";
+import {
+  CALL_TEMPLATE_SHA256,
+  PUT_TEMPLATE_SHA256,
+  describeOption,
+  type OptionView,
+} from "./protocols/option/option.ts";
+import { FEE, describe as describeOrder } from "./protocols/machina/orders.ts";
 
 /** The deepest ERG pool per token id. */
 async function deepestPools(explorer: Explorer): Promise<Map<string, Box<bigint>>> {

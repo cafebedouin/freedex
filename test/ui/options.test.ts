@@ -4,7 +4,7 @@
 // expired option the visitor wrote.
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EIP12UnsignedTransaction } from "@fleet-sdk/common";
-import { CALL_TREE, PUT_TREE, describeOption } from "../../src/option";
+import { CALL_TREE, PUT_TREE, describeOption } from "../../src/protocols/option/option";
 import { makeWorld, SIGUSD } from "./fixtures";
 import {
   choose,

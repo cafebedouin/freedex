@@ -8,7 +8,7 @@ import {
   buildOpenOrder,
   orderContract,
   SIGMAFI_TEMPLATES,
-} from "../src/bonds";
+} from "../src/protocols/sigmafi/bonds";
 import type { Explorer } from "../src/explorer";
 import { maturedBondsFor } from "../src/upkeep";
 

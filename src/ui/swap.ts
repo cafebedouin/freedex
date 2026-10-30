@@ -11,10 +11,10 @@ import {
   quoteT2T,
   t2tSides,
   type SwapDirection,
-} from "../amm";
-import { coinOf, mintQuote, redeemQuote as bankRedeemQuote } from "../bank";
+} from "../protocols/ergodex/amm";
+import { coinOf, mintQuote, redeemQuote as bankRedeemQuote } from "../protocols/sigmausd/bank";
 import type { PoolEntry, T2TPoolEntry } from "../explorer";
-import { FEE } from "../orders";
+import { FEE } from "../protocols/machina/orders";
 import tokenlist from "../tokenlist.json" with { type: "json" };
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, dl, err, log, option } from "./dom";
@@ -29,6 +29,8 @@ export type Route =
 /** ERG-to-token through the deepest ERG pool; token-to-token through a direct pool, else none. */
 export function route(store: Store): Route {
   const { fromId, toId } = store.state;
+  if (store.state.pools.length === 0 && store.state.t2tPools.length === 0)
+    return { kind: "none", why: store.state.poolsError ? store.explorerLabel() : "loading from the explorer…" };
   if (!fromId || !toId) return { kind: "none", why: "pick both assets" };
   if (fromId === toId) return { kind: "none", why: "pick two different assets" };
   if (fromId === ERG || toId === ERG) {
@@ -251,20 +253,28 @@ export function mountSwap(store: Store) {
     try {
       const r = route(store);
       if (r.kind === "none") throw new Error(r.why);
+      const toId = s.toId;
       const amountIn = parseUnits(swapIn.value, store.decimalsOf(s.fromId));
       if (!shown || shown.amountIn !== amountIn) throw new Error("the quote is stale; type the amount again");
       // the pool is re-read now; it must still pay at least the minimum the user saw, or the build refuses
       const minOut = shown.minOut;
       const user = store.wallet!.changeAddress;
+      const what = `Swap ${formatUnits(amountIn, store.decimalsOf(s.fromId))} ${store.nameOf(s.fromId)} for ${swapOut.value} ${store.nameOf(toId)} (at least ${formatUnits(minOut, store.decimalsOf(toId))} after slippage), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`;
       if (r.kind === "n2t") {
         const fresh = await store.explorer.poolByNft(r.entry.box.assets[0].tokenId);
-        await send(store, (height, inputs) =>
-          buildSwap({ height, inputs, user, poolBox: fresh.box, direction: r.direction, amountIn, minOut }),
+        await send(
+          store,
+          (height, inputs) =>
+            buildSwap({ height, inputs, user, poolBox: fresh.box, direction: r.direction, amountIn, minOut }),
+          what,
         );
       } else {
         const fresh = await store.explorer.t2tPoolByNft(r.entry.box.assets[0].tokenId);
-        await send(store, (height, inputs) =>
-          buildSwapT2T({ height, inputs, user, poolBox: fresh.box, inId: s.fromId, amountIn, minOut }),
+        await send(
+          store,
+          (height, inputs) =>
+            buildSwapT2T({ height, inputs, user, poolBox: fresh.box, inId: s.fromId, amountIn, minOut }),
+          what,
         );
       }
       swapIn.value = "";

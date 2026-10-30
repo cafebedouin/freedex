@@ -1,5 +1,5 @@
 import { Explorer } from "../src/explorer.ts";
-import { loadBank, mintQuote } from "../src/bank.ts";
+import { loadBank, mintQuote } from "../src/protocols/sigmausd/bank.ts";
 const b = await loadBank(new Explorer());
 console.log(
   "oracle nanoERG/cent",

@@ -72,7 +72,8 @@ was generated (`src/tokenlist.json`, `npm run tokens` to refresh), plus an "othe
 
 The page reads from a public explorer, builds transactions in your browser with [Fleet](https://fleet-sdk.github.io/docs/),
 and hands them to an EIP-12 wallet ([Nautilus](https://github.com/nautls/nautilus-wallet), SAFEW) to sign and submit.
-Your keys stay in your wallet.
+Your keys stay in your wallet. Before every wallet prompt the page states, in words, what it is about to ask you to
+sign (the amounts and the fee), on the status line under the tabs and in the log.
 
 ## What a trade costs
 
@@ -101,15 +102,19 @@ characters, which takes a dozen or more inputs) is refused with a note to consol
 
 ```
 npm ci
-npm test          # the builders against the real contracts on Fleet's mock chain, and the page in happy-dom
+npm test          # the builders against the real contracts on Fleet's mock chain, the property suites, the page in happy-dom
 npm run lint      # Prettier and ESLint, as CI runs them
 npm run dev       # http://localhost:5173
 npm run build     # dist/, static files for any host
+npx playwright test   # the built page in Chromium (after npm run build and npx playwright install chromium)
 ```
 
 `VITE_EXPLORER` selects another explorer API (`VITE_EXPLORER=https://api.ergo.aap.cornell.edu npm run build`). The
-header's explorer menu does the same at runtime, and a line beside it says when the page is reading from the second
-backend because the first did not answer.
+header's explorer menu does the same at runtime. A request that fails (a network error, a timeout after 15 s, a 5xx
+or a 429) is retried on the same backend after 1 s, 2 s and 4 s before the next backend is tried; while that
+happens every tab says "explorer unavailable, retrying" in place of its listing, the header line names the try in
+progress, and a listing that failed shows a retry button. A line beside the menu says when the page is reading
+from the second backend because the first did not answer.
 
 ## Host it yourself
 
@@ -119,28 +124,49 @@ contents of `dist/`.
 
 ## What is where
 
-- `src/amm.ts`: pool quotes, price impact, and the direct swap, deposit and redeem builders. Pure functions, no DOM,
-  no network.
-- `src/orders.ts`: the limit-order builders (`buildCreate`, `buildFill`, `buildClose`) and `describe` for display.
+- `src/protocols/<name>/`: one directory per protocol, the builders with their mock-chain tests beside them. Pure
+  functions, no DOM, no network.
+  - `ergodex/amm.ts`: pool quotes, price impact, and the direct swap, deposit and redeem builders, ERG pools and
+    token-to-token pools.
+  - `machina/orders.ts`: the limit-order builders (`buildCreate`, `buildFill`, `buildClose`) and `describe` for
+    display; `machina/machina-arb.ts`: the keyless take of an order priced across its pool.
+  - `babel/babel.ts`: EIP-31 Babel bids, the taker's fill and the keyless take.
+  - `sigmausd/bank.ts`, `sigmafi/bonds.ts`, `tokenjay/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay
+    escrow on their deployed contracts.
+  - `clock/clock.ts`: the clocked box's two sides (buy and sell) and their builders (create for each side with the
+    rent and length checks, the keyless leg and cancel for both); `option/option.ts`: the call and the put.
+- `src/registry.json`, `src/registry.ts`: the contract registry, the one place every tree and template hash the
+  page builds against lives, with each contract's source, licence and the date its hash was last matched against a
+  mainnet box; `test/hashes.test.ts` checks every entry and recompiles `contracts/*.es` against it;
+  `scripts/registry-check.ts` asks the explorer for a box per entry.
+- `contracts/`: this project's own ErgoScript (`Clock.es`, `ClockSell.es`, `Call.es`, `Put.es`), compiled by
+  `scripts/compile-clock.ts` and `scripts/compile-option.ts`.
+- `docs/invariants/`: what each builder checks, what it leaves to the contract, and the test that proves each
+  refusal, one file per domain (below).
 - `src/explorer.ts`: height, token metadata, pools and open orders by ErgoTree template hash, with amounts parsed as
-  exact integers (every pool's LP token amount is past what a JavaScript number holds).
-- `src/bank.ts`, `src/bonds.ts`, `src/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay escrow on their
-  deployed contracts; `src/sigmafi-contracts.json` holds SigmaFi's contract hex as extracted from its MIT source.
-- `src/babel.ts`, `src/machina-arb.ts`, `src/upkeep.ts`: the keyless takes (sizing against the pool's rule, no
-  signature) and the job runner, including the `clock-legs` job.
-- `contracts/Clock.es`, `contracts/ClockSell.es`, `src/clock.ts`, `scripts/compile-clock.ts`: the clocked box's
-  two sides (buy and sell), their pinned trees and the builders (create for each side with the rent and length
-  checks, the keyless leg and cancel for both); `test/hashes.test.ts` recompiles both sources and checks them
-  against the pinned bytes.
-- `src/wallet.ts`: EIP-12 connect, balances, UTXOs, sign and submit.
+  exact integers (every pool's LP token amount is past what a JavaScript number holds); the retry and failover.
+- `src/upkeep.ts`: the keyless job runner (Babel bids, Machina orders, the `clock-legs` job) and the two jobs that
+  need the wallet.
+- `src/wallet.ts`, `src/ergopay.ts`: EIP-12 connect, balances, UTXOs, sign and submit; the phone path.
 - `src/units.ts`: decimal text to smallest units and back, exact.
 - `src/ui/`: one module per tab (`swap.ts`, `orders.ts`, `pool.ts`, `bank.ts`, `bonds.ts`, `escrow.ts`,
-  `programs.ts`, `options.ts`), the header
-  (`header.ts`, `wallet.ts`), the upkeep timer (`upkeep.ts`), the shared state with its subscriptions (`store.ts`)
-  and the DOM helpers (`dom.ts`). Chain-sourced strings only ever become text nodes; nothing writes `innerHTML`.
+  `programs.ts`, `options.ts`), the header (`header.ts`, `wallet.ts`), the upkeep timer (`upkeep.ts`), the shared
+  state with its subscriptions (`store.ts`), the listing states (`listing.ts`) and the DOM helpers (`dom.ts`).
+  Chain-sourced strings only ever become text nodes; nothing writes `innerHTML`.
 - `src/main.ts`, `index.html`: the tab switcher and the boot sequence; the page.
-- `test/`: mock-chain tests for every builder (fills, refusals, a slippage guard) and the parser, with a captured
-  pool box; `test/ui/` renders `index.html` in happy-dom over a stubbed explorer and wallet and drives the tabs.
+- `test/`: the cross-cutting tests (the registry, units, sizing, the keyless id, the explorer's parser and retries,
+  the phone path, the upkeep finders); `test/properties/` the property suites (`fast-check`, the mock chain as the
+  oracle); `test/ui/` renders `index.html` in happy-dom over a stubbed explorer and wallet, drives the tabs, and
+  runs `axe-core` over each; `test/browser/` the one Playwright test of the built page in Chromium.
+
+## Invariants
+
+What each builder checks and throws, which values the user sets and which come from the chain, the arithmetic and
+its rounding direction against the contract line it mirrors, what the contract refuses that the builder does not
+pre-check, the test that proves each refusal, and the limits: [pools](docs/invariants/pools.md),
+[orders](docs/invariants/orders.md) (Machina and Babel), [bank](docs/invariants/bank.md),
+[bonds](docs/invariants/bonds.md), [escrow](docs/invariants/escrow.md), [clock](docs/invariants/clock.md),
+[option](docs/invariants/option.md), [upkeep](docs/invariants/upkeep.md), [signing](docs/invariants/signing.md).
 
 ## Units and limits
 
@@ -166,11 +192,29 @@ contents of `dist/`.
 - A deposit needs tokens at the pool's ratio; the page computes the token amount from the ERG amount and tells you
   if the wallet is short before anything is signed.
 
+## Compatibility
+
+Only what has been run is listed; see `CHANGELOG.md` for when.
+
+- Wallets: Nautilus and SAFEW through EIP-12 (the dApp connector; the page is tested against a stubbed connector
+  and the builders' transactions were signed through the project's own guarded signer on mainnet); the Ergo mobile
+  wallet and Terminus through ErgoPay in its static mode (the page's QR code; a static code of any scannable
+  length goes straight to the wallet's signing screen by its source, and the scan itself is the person's check,
+  not yet recorded here); Satergo untested.
+- Explorers: `api.ergoplatform.com` and `api.ergo.aap.cornell.edu`, both serving `/api/v1` with cross-origin
+  reads; either may be chosen in the header, and the page fails over between them.
+- Node: the contracts were checked on Fleet's mock chain (`sigmastate-js`, the node's own interpreter compiled to
+  JavaScript) and on mainnet through the explorer's mempool (the transactions listed below); no node version is
+  recorded beyond that.
+- Browsers: the WASM path (the phone's reduction) has run in Chromium 156 (Playwright's headless build, Linux) on
+  every pull request; no other browser is recorded until the person confirms one.
+
 ## Status
 
 Built 2026-10-29 in [skunkyard](https://github.com/cafebedouin/skunkyard) (SK-063). Every builder has run on
 mainnet through a test wallet with pocket change; the transaction ids are listed in the section below. Still use
-pocket change: this is days old.
+pocket change: this is days old. Version `v0.1.0` is the hardening pass of 2026-10-29 (`CHANGELOG.md`); security
+reports go through `SECURITY.md`.
 
 ### Mainnet transactions from these builders
 
@@ -208,6 +252,11 @@ The two deferred items followed: the page is one module per tab over a small sto
 drives the rendered page in happy-dom (routes, quotes and the stale-quote refusal, deposits from either side, the
 bank's "allowed" line, order grouping, the positions sections, the fallback line, the upkeep job; and a check that
 no element carries an inline handler). Prettier and ESLint run in CI before the tests.
+
+A second list, 2026-10-29, became the hardening pass tagged `v0.1.0`: the invariants written down, property tests
+(which found that the pool script cannot evaluate a swap whose input times the fee numerator passes a Long, now
+refused by the builder), the contract registry, scanning on a budget (`npm audit`, CodeQL weekly, Dependabot
+monthly), one browser test under the CSP, explorer retries with a visible state, and the accessibility pass.
 
 ## Licence
 

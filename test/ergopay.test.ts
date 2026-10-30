@@ -18,7 +18,7 @@ import {
   type ErgoLibModule,
   type Reduced,
 } from "../src/ergopay";
-import { FEE } from "../src/orders";
+import { FEE } from "../src/protocols/machina/orders";
 import { fakeErgoLib } from "./fake-ergolib";
 import headers from "./fixtures/headers.json" with { type: "json" };
 

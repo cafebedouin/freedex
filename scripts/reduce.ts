@@ -5,7 +5,7 @@
 // Run: node scripts/reduce.ts [address]   (Node 23+ strips types; no build needed)
 import { createRequire } from "node:module";
 import { ErgoAddress } from "@fleet-sdk/core";
-import { buildSwap, describePool, quote } from "../src/amm.ts";
+import { buildSwap, describePool, quote } from "../src/protocols/ergodex/amm.ts";
 import { Explorer } from "../src/explorer.ts";
 import { HEADERS_NEEDED, QR_MAX_CHARS, reduceTransaction, sizeGuard, toEip12Box } from "../src/ergopay.ts";
 import type { ErgoLibModule } from "../src/ergopay.ts";

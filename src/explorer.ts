@@ -1,10 +1,13 @@
 // Reads from a public explorer API. No keys, no writes except transaction submission, which the wallet does.
 import type { Box } from "@fleet-sdk/common";
+import { hashOf } from "./registry.ts";
 
 export const DEFAULT_EXPLORER = "https://api.ergoplatform.com";
 /** Tried in order when the one before fails or times out. Both serve the same /api/v1 and allow cross-origin reads. */
 export const EXPLORERS = [DEFAULT_EXPLORER, "https://api.ergo.aap.cornell.edu"];
 export const REQUEST_TIMEOUT_MS = 15_000;
+/** Waits before each retry of a failed request on the same backend (so four tries a backend) before the next backend is tried. */
+export const RETRY_DELAYS_MS = [1000, 2000, 4000];
 /** Pool and order listings are reused for this long across tabs and the upkeep runner. */
 export const CACHE_MS = 30_000;
 const STORAGE_KEY = "freedex.explorer";
@@ -26,8 +29,8 @@ export function storeExplorer(base: string | undefined) {
   }
 }
 
-/** SHA-256 of the Machina E2T limit-order ErgoTree template (scripts/template-hash.mjs, 2026-10-29). */
-export const E2T_LIMIT_TEMPLATE_SHA256 = "03ef002b73a894198c7c9a4332ba28ca000dc6c40cb801f0c719940d9a6a8f6b";
+/** SHA-256 of the Machina E2T limit-order ErgoTree template (src/registry.json). */
+export const E2T_LIMIT_TEMPLATE_SHA256 = hashOf("machina-e2t-limit-order");
 
 interface ExplorerRegister {
   serializedValue: string;
@@ -60,14 +63,14 @@ export interface T2TPoolEntry {
   yDecimals: number;
 }
 
-/** SHA-256 of the EIP-31 Babel template, the same for every token (pinned by test/hashes.test.ts). */
-export const BABEL_TEMPLATE_SHA256 = "4e83fa68ef3ed9794bbab5d8799998a9e09fb10a0afe8d1bf928936dfd11c465";
+/** SHA-256 of the EIP-31 Babel template, the same for every token (src/registry.json). */
+export const BABEL_TEMPLATE_SHA256 = hashOf("eip31-babel");
 
-/** SHA-256 of the ErgoDEX v1 T2T pool template (pinned by test/hashes.test.ts). */
-export const T2T_POOL_TEMPLATE_SHA256 = "3c09deff3b5f49329149d18e02aab675ef6957bf6559a5c7dba817fee883fb3e";
+/** SHA-256 of the ErgoDEX v1 T2T pool template (src/registry.json). */
+export const T2T_POOL_TEMPLATE_SHA256 = hashOf("ergodex-t2t-pool");
 
-/** SHA-256 of the ErgoDEX v1 N2T pool template (pinned to the tree by test/hashes.test.ts). */
-export const POOL_TEMPLATE_SHA256 = "2dcc7830afe8f355b945850c60ff2b41fdb3e8ade07fde0a7c8a3ec498e8c3f6";
+/** SHA-256 of the ErgoDEX v1 N2T pool template (src/registry.json). */
+export const POOL_TEMPLATE_SHA256 = hashOf("ergodex-n2t-pool");
 
 export interface TokenInfo {
   id: string;
@@ -75,38 +78,73 @@ export interface TokenInfo {
   decimals: number;
 }
 
+/** What the page shows while a request is being retried, after every backend failed, or once one answered again. */
+export interface ExplorerStatus {
+  state: "retrying" | "failed" | "ok";
+  base: string;
+  /** the try that just failed (1 to RETRY_DELAYS_MS.length + 1) */
+  attempt: number;
+  path: string;
+  error?: string;
+}
+
+const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 export class Explorer {
   /** The base that answered last; starts as the one given. */
   base: string;
   readonly bases: string[];
   /** Called when a different base answered than last time (the page shows a line when it is not the first). */
   onBaseChange?: (base: string) => void;
+  /** Called on every failed try (retrying), when every backend has failed (failed), and on the first success after a failure (ok). */
+  onStatus?: (status: ExplorerStatus) => void;
+  /** The wait between retries; tests replace it. */
+  sleep: (ms: number) => Promise<void> = defaultSleep;
   #cache = new Map<string, { at: number; value: unknown }>();
+  #degraded = false;
   constructor(base?: string, fallbacks: string[] = EXPLORERS) {
     this.base = base ?? fallbacks[0];
     this.bases = [this.base, ...fallbacks.filter((b) => b !== this.base)];
   }
 
-  /** The same request against each base in turn, each with a timeout; the first success wins and becomes `base`. */
+  /**
+   * The same request against each base in turn, each try with a timeout. A network error, a timeout, a 5xx or a
+   * 429 is retried on the same backend after RETRY_DELAYS_MS (1 s, 2 s, 4 s) before the next backend is tried; any
+   * other answer is returned as is. The first success wins and becomes `base`.
+   */
   async #fetchAny(path: string, init?: RequestInit): Promise<Response> {
     let last: unknown;
     for (const base of this.bases) {
-      try {
-        const res = await fetch(base + path, {
-          ...init,
-          headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-        });
-        if (res.status >= 500 || res.status === 429) throw new Error(`explorer ${res.status} on ${path}`);
-        if (this.base !== base) {
-          this.base = base;
-          this.onBaseChange?.(base);
+      for (let attempt = 1; attempt <= RETRY_DELAYS_MS.length + 1; attempt++) {
+        try {
+          const res = await fetch(base + path, {
+            ...init,
+            headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          });
+          if (res.status >= 500 || res.status === 429) throw new Error(`explorer ${res.status} on ${path}`);
+          if (this.base !== base) {
+            this.base = base;
+            this.onBaseChange?.(base);
+          }
+          if (this.#degraded) {
+            this.#degraded = false;
+            this.onStatus?.({ state: "ok", base, attempt, path });
+          }
+          return res;
+        } catch (e) {
+          last = e;
+          const error = e instanceof Error ? e.message : String(e);
+          this.#degraded = true;
+          if (attempt <= RETRY_DELAYS_MS.length) {
+            this.onStatus?.({ state: "retrying", base, attempt, path, error });
+            await this.sleep(RETRY_DELAYS_MS[attempt - 1]);
+          }
         }
-        return res;
-      } catch (e) {
-        last = e;
       }
     }
+    const error = last instanceof Error ? last.message : String(last);
+    this.onStatus?.({ state: "failed", base: this.base, attempt: RETRY_DELAYS_MS.length + 1, path, error });
     throw last instanceof Error ? last : new Error(String(last));
   }
 

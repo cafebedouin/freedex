@@ -1,0 +1,25 @@
+# CodeQL over the TypeScript, weekly and on pull requests, never on a push: about five runs a month plus one per
+# pull request, within the account's Actions budget (skunkyard CLAUDE.md).
+name: codeql
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

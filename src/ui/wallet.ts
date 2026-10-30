@@ -12,19 +12,31 @@ import type { Store } from "./store";
 
 export type Builder = (height: number, inputs: Box<string>[]) => EIP12UnsignedTransaction;
 
-export async function send(store: Store, build: Builder): Promise<string> {
+/**
+ * Every tab's path: build from the signer's boxes at its height, then sign and submit through it. `what` is the
+ * sentence the visitor sees before the wallet prompt, the amounts in words (the `#confirm` status line and the log).
+ */
+export async function send(store: Store, build: Builder, what?: string): Promise<string> {
   const wallet = store.wallet;
   if (!wallet) throw new Error("connect a wallet first");
   const height = await wallet.height();
   const inputs = await wallet.utxos();
   const tx = build(height, inputs);
-  log(
-    `built: ${tx.inputs.length} inputs, ${tx.outputs.length} outputs, height ${height}; waiting for the ${wallet.kind === "ergopay" ? "phone" : "wallet"}`,
-  );
-  const txId = await wallet.sign(tx);
-  log(`submitted ${txId}\n${store.explorer.txUrl(txId)}`);
-  store.explorer.invalidate();
-  return txId;
+  const signer = wallet.kind === "ergopay" ? "phone" : "wallet";
+  const confirm = $("confirm");
+  if (what) {
+    confirm.textContent = `${what}. Your ${signer} will ask you to confirm.`;
+    log(what);
+  }
+  log(`built: ${tx.inputs.length} inputs, ${tx.outputs.length} outputs, height ${height}; waiting for the ${signer}`);
+  try {
+    const txId = await wallet.sign(tx);
+    log(`submitted ${txId}\n${store.explorer.txUrl(txId)}`);
+    store.explorer.invalidate();
+    return txId;
+  } finally {
+    if (what) confirm.textContent = "";
+  }
 }
 
 /** The 2.7 MB WASM binding, fetched only when the phone path is chosen. */
@@ -56,6 +68,8 @@ function phonePanel(): PhoneHooks {
   const txid = $("ergopay-txid");
   const status = $("ergopay-status");
   const cancel = $<HTMLButtonElement>("ergopay-cancel");
+  /** where the focus was before the panel opened, to return it on close */
+  let before: Element | null = null;
   return {
     show(r, stop) {
       link.href = r.link;
@@ -64,6 +78,8 @@ function phonePanel(): PhoneHooks {
       canvas.hidden = !drawQr(canvas, r.link);
       cancel.onclick = stop;
       panel.hidden = false;
+      before = document.activeElement;
+      panel.focus?.();
       panel.scrollIntoView?.({ block: "nearest" });
       log(
         `reduced to ${r.bytes.length} bytes, a ${r.link.length}-character link; scan the code with the wallet, or open the link on this device; waiting for ${r.txId}`,
@@ -75,6 +91,8 @@ function phonePanel(): PhoneHooks {
     hide() {
       panel.hidden = true;
       cancel.onclick = null;
+      if (before instanceof HTMLElement && before.isConnected) before.focus?.();
+      before = null;
     },
   };
 }

@@ -2,12 +2,12 @@
 // subscription so a tab re-renders when the wallet or a listing changes. No DOM except the log line.
 import type { SigmaUSDBank } from "@fleet-sdk/ageusd-plugin";
 import type { Box } from "@fleet-sdk/common";
-import { describeT2TPool, t2tSides } from "../amm";
-import { describeBabel } from "../babel";
-import { loadBank } from "../bank";
-import type { Explorer, PoolEntry, T2TPoolEntry, TokenInfo } from "../explorer";
+import { describeT2TPool, t2tSides } from "../protocols/ergodex/amm";
+import { describeBabel } from "../protocols/babel/babel";
+import { loadBank } from "../protocols/sigmausd/bank";
+import type { Explorer, ExplorerStatus, PoolEntry, T2TPoolEntry, TokenInfo } from "../explorer";
 import tokenlist from "../tokenlist.json" with { type: "json" };
-import { describe as describeOrder } from "../orders";
+import { describe as describeOrder } from "../protocols/machina/orders";
 import { ERG_DECIMALS } from "../units";
 import type { Wallet } from "../wallet";
 import { err, log } from "./dom";
@@ -15,7 +15,7 @@ import { err, log } from "./dom";
 export const ERG = "ERG";
 export const OTHER = "__other__";
 
-export type Topic = "wallet" | "pools" | "bank" | "orders";
+export type Topic = "wallet" | "pools" | "bank" | "orders" | "explorer";
 
 export interface State {
   wallet?: Wallet;
@@ -28,6 +28,8 @@ export interface State {
   /** the Swap tab's assets */
   fromId: string;
   toId: string;
+  /** why the pool listing is empty, when a load failed; cleared by a load that succeeds */
+  poolsError?: string;
 }
 
 export class Store {
@@ -36,8 +38,24 @@ export class Store {
   readonly state: State = { pools: [], t2tPools: [], orderBoxes: [], babelBoxes: [], fromId: ERG, toId: "" };
   #subs = new Map<Topic, Set<() => void>>();
 
+  /** The explorer's last reported state: a retry in progress, every backend failed, or answering again. */
+  explorerStatus?: ExplorerStatus;
+
   constructor(explorer: Explorer) {
     this.explorer = explorer;
+    explorer.onStatus = (s) => {
+      this.explorerStatus = s;
+      this.notify("explorer");
+    };
+  }
+
+  /** One line for a listing that is loading or could not load: what the explorer is doing about it. */
+  explorerLabel(): string {
+    const s = this.explorerStatus;
+    const host = (b: string) => b.replace(/^https:\/\//, "");
+    if (s?.state === "retrying") return `explorer unavailable (${host(s.base)}, try ${s.attempt} failed), retrying…`;
+    if (s?.state === "failed") return `explorer unavailable (${s.error}); retrying at the next refresh`;
+    return "loading from the explorer…";
   }
 
   get wallet(): Wallet | undefined {
@@ -126,7 +144,7 @@ export class Store {
   }
 
   /** Both pool listings from the explorer; token names from them; the Swap tab's default target. */
-  async loadPools(): Promise<void> {
+  async loadPools(): Promise<boolean> {
     const s = this.state;
     try {
       [s.pools, s.t2tPools] = await Promise.all([this.explorer.pools(500), this.explorer.t2tPools(500)]);
@@ -137,12 +155,17 @@ export class Store {
         this.rememberToken(e.box.assets[3].tokenId, e.yName, e.yDecimals);
       }
       if (!s.toId) s.toId = tokenlist.tokens.find((t) => t.name === "SigUSD")?.id ?? tokenlist.tokens[0]?.id ?? "";
+      s.poolsError = undefined;
       this.notify("pools");
       log(
         `${s.pools.length} ERG pools and ${s.t2tPools.length} token-to-token pools listed by the explorer; ${tokenlist.tokens.length} tokens in the static list (${tokenlist.generated})`,
       );
+      return true;
     } catch (e) {
+      s.poolsError = err(e);
       log(`could not load pools: ${err(e)}`);
+      this.notify("pools");
+      return false;
     }
   }
 

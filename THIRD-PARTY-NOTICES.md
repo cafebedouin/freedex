@@ -5,10 +5,11 @@ from, or carry, other people's work, and their notices travel with them.
 
 ## SigmaFi (MIT)
 
-`src/bonds.ts` is a port of the transaction builders in `src/offchain/plugins.ts` of
-https://github.com/capt-nemo429/sigmafi-ui, and `src/sigmafi-contracts.json` holds the deployed contract bytes
-extracted from that file (`scripts/sigmafi-constants.mjs`). Those two files are offered under CC0 to the extent of
-this project's contribution and remain subject to the original licence for what they derive:
+`src/protocols/sigmafi/bonds.ts` is a port of the transaction builders in `src/offchain/plugins.ts` of
+https://github.com/capt-nemo429/sigmafi-ui, and the `sigmafi-*` entries of `src/registry.json` hold the deployed
+contract bytes extracted from that file (`scripts/sigmafi-constants.mjs`, commit `309c1ac`). That module and those
+entries are offered under CC0 to the extent of this project's contribution and remain subject to the original
+licence for what they derive:
 
     MIT License
 

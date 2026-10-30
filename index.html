@@ -35,6 +35,7 @@
     .mine { font-weight: 600; }
     .muted { opacity: .7; }
     .small { font-size: .85rem; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     details { margin: .5rem 0; border: 1px solid var(--line); border-radius: .4rem; padding: .3rem .6rem; }
     summary { cursor: pointer; font-weight: 600; }
     summary .muted { font-weight: 400; }
@@ -44,39 +45,41 @@
 <body>
   <header>
     <h1>FreeDEX <span class="muted">for Ergo</span></h1>
-    <div><select id="explorer-pick" class="small" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="explorer-status" class="muted small"></span> <span id="wallet"></span></div>
+    <div><select id="explorer-pick" class="small" aria-label="explorer API the page reads" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="explorer-status" class="muted small" role="status" aria-live="polite"></span> <span id="wallet"></span></div>
   </header>
+  <main>
   <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
-  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool, and the legs of clocked programs that are due), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, or an option you wrote has expired, it asks your wallet once to sign the transaction that hands you the collateral or the box (you pay the miner fee). <span id="upkeep-status" class="muted"></span></label></p>
+  <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool, and the legs of clocked programs that are due), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, or an option you wrote has expired, it asks your wallet once to sign the transaction that hands you the collateral or the box (you pay the miner fee). <span id="upkeep-status" class="muted" role="status" aria-live="polite"></span></label></p>
 
-  <nav role="tablist">
-    <button role="tab" data-tab="swap" aria-selected="true">Swap</button>
-    <button role="tab" data-tab="orders" aria-selected="false">Limit orders</button>
-    <button role="tab" data-tab="pool" aria-selected="false">Pool</button>
-    <button role="tab" data-tab="bank" aria-selected="false">Bank</button>
-    <button role="tab" data-tab="bonds" aria-selected="false">Bonds</button>
-    <button role="tab" data-tab="escrow" aria-selected="false">Escrow</button>
-    <button role="tab" data-tab="programs" aria-selected="false">Programs</button>
-    <button role="tab" data-tab="options" aria-selected="false">Options</button>
+  <nav role="tablist" aria-label="what to do">
+    <button role="tab" id="tab-btn-swap" data-tab="swap" aria-selected="true" aria-controls="tab-swap">Swap</button>
+    <button role="tab" id="tab-btn-orders" data-tab="orders" aria-selected="false" aria-controls="tab-orders">Limit orders</button>
+    <button role="tab" id="tab-btn-pool" data-tab="pool" aria-selected="false" aria-controls="tab-pool">Pool</button>
+    <button role="tab" id="tab-btn-bank" data-tab="bank" aria-selected="false" aria-controls="tab-bank">Bank</button>
+    <button role="tab" id="tab-btn-bonds" data-tab="bonds" aria-selected="false" aria-controls="tab-bonds">Bonds</button>
+    <button role="tab" id="tab-btn-escrow" data-tab="escrow" aria-selected="false" aria-controls="tab-escrow">Escrow</button>
+    <button role="tab" id="tab-btn-programs" data-tab="programs" aria-selected="false" aria-controls="tab-programs">Programs</button>
+    <button role="tab" id="tab-btn-options" data-tab="options" aria-selected="false" aria-controls="tab-options">Options</button>
   </nav>
+  <p id="confirm" class="small" role="status" aria-live="polite"></p>
 
-  <section id="tab-swap">
+  <section id="tab-swap" role="tabpanel" aria-labelledby="tab-btn-swap">
     <div class="panel">
       <div class="row">
-        <input type="text" id="swap-in" inputmode="decimal" placeholder="0.0" autocomplete="off" />
-        <select id="swap-from"><option value="ERG">ERG</option></select>
+        <input type="text" id="swap-in" inputmode="decimal" placeholder="0.0" autocomplete="off" aria-label="amount to pay" />
+        <select id="swap-from" aria-label="asset to pay"><option value="ERG">ERG</option></select>
       </div>
-      <div class="small muted" id="swap-balance"></div>
-      <div style="text-align:center"><button id="swap-flip" title="flip direction">⇅</button></div>
+      <div class="small muted" id="swap-balance" role="status" aria-live="polite"></div>
+      <div style="text-align:center"><button id="swap-flip" title="flip direction" aria-label="flip direction">⇅</button></div>
       <div class="row">
-        <input type="text" id="swap-out" placeholder="0.0" readonly />
-        <select id="swap-to"></select>
+        <input type="text" id="swap-out" placeholder="0.0" readonly aria-label="amount you receive, estimate" />
+        <select id="swap-to" aria-label="asset to receive"></select>
       </div>
       <div class="row small" id="swap-other-row" hidden>
-        <input type="text" id="swap-other" placeholder="token id (64 hex) for any token with an ErgoDEX pool" size="64" />
+        <input type="text" id="swap-other" placeholder="token id (64 hex) for any token with an ErgoDEX pool" size="64" aria-label="token id, 64 hex characters" />
         <button id="swap-other-go">use</button>
       </div>
-      <div class="small muted" id="swap-route"></div>
+      <div class="small muted" id="swap-route" role="status" aria-live="polite"></div>
       <dl id="swap-quote"></dl>
       <div class="row small"><label for="slippage">Slippage tolerance (%)</label><input id="slippage" type="text" inputmode="decimal" value="1" size="4" /></div>
       <button class="primary" id="swap-go" disabled>Swap</button>
@@ -84,7 +87,7 @@
     </div>
   </section>
 
-  <section id="tab-orders" hidden>
+  <section id="tab-orders" role="tabpanel" aria-labelledby="tab-btn-orders" hidden>
     <h2>Place a limit order</h2>
     <form id="create" class="grid">
       <label for="side">You</label>
@@ -108,37 +111,37 @@
     <div id="orders">loading…</div>
   </section>
 
-  <section id="tab-pool" hidden>
+  <section id="tab-pool" role="tabpanel" aria-labelledby="tab-btn-pool" hidden>
     <div class="panel">
       <h2>Add liquidity</h2>
-      <div class="row"><select id="lp-token"></select><span class="small muted">pair</span></div>
+      <div class="row"><select id="lp-token" aria-label="pool pair"></select><span class="small muted">pair</span></div>
       <dl id="lp-info"></dl>
-      <div class="row"><input type="text" id="lp-erg" inputmode="decimal" placeholder="amount to add" autocomplete="off" /><span id="lp-erg-name">ERG</span></div>
-      <div class="row"><input type="text" id="lp-tok" inputmode="decimal" placeholder="amount to add" autocomplete="off" /><span id="lp-tok-name">tokens</span></div>
+      <div class="row"><input type="text" id="lp-erg" inputmode="decimal" placeholder="amount to add" autocomplete="off" /><label for="lp-erg" id="lp-erg-name">ERG</label></div>
+      <div class="row"><input type="text" id="lp-tok" inputmode="decimal" placeholder="amount to add" autocomplete="off" /><label for="lp-tok" id="lp-tok-name">tokens</label></div>
       <p class="muted small">Type either side; the other fills in at the pool's ratio.</p>
       <dl id="lp-quote"></dl>
       <button class="primary" id="lp-add" disabled>Add liquidity</button>
       <h2 style="margin-top:1.25rem">Remove liquidity</h2>
-      <div class="row"><input type="text" id="lp-in" inputmode="decimal" placeholder="LP tokens to redeem" autocomplete="off" /><button id="lp-max">max</button></div>
+      <div class="row"><input type="text" id="lp-in" inputmode="decimal" placeholder="LP tokens to redeem" autocomplete="off" aria-label="LP tokens to redeem" /><button id="lp-max">max</button></div>
       <dl id="lp-redeem-quote"></dl>
       <button class="primary" id="lp-remove" disabled>Remove liquidity</button>
       <p class="muted small">Deposits and redemptions go straight to the pool box in one transaction at the pool's own rule (Pool.sc: a deposit earns at most min(ΔERG, Δtoken) of the supply, pro rata; a redemption returns your share). LP tokens are plain tokens in your wallet. Miner fee 0.001 ERG, nothing else.</p>
     </div>
   </section>
 
-  <section id="tab-bank" hidden>
+  <section id="tab-bank" role="tabpanel" aria-labelledby="tab-btn-bank" hidden>
     <div class="panel">
       <h2>SigmaUSD bank</h2>
       <p class="muted small">Mint or redeem SigUSD and SigRSV directly against the bank at the oracle price. The bank's own 2% protocol fee applies; the page adds nothing. Minting SigUSD is allowed while the reserve ratio stays above 400%, minting SigRSV while it stays below 800%.</p>
       <dl id="bank-info">loading…</dl>
-      <div class="row"><select id="bank-action"><option value="mint:stable">mint SigUSD</option><option value="redeem:stable">redeem SigUSD</option><option value="mint:reserve">mint SigRSV</option><option value="redeem:reserve">redeem SigRSV</option></select><span></span></div>
-      <div class="row"><input type="text" id="bank-amount" inputmode="decimal" placeholder="amount" autocomplete="off" /><span id="bank-amount-name">SigUSD</span></div>
+      <div class="row"><select id="bank-action" aria-label="bank action"><option value="mint:stable">mint SigUSD</option><option value="redeem:stable">redeem SigUSD</option><option value="mint:reserve">mint SigRSV</option><option value="redeem:reserve">redeem SigRSV</option></select><span></span></div>
+      <div class="row"><input type="text" id="bank-amount" inputmode="decimal" placeholder="amount" autocomplete="off" /><label for="bank-amount" id="bank-amount-name">SigUSD</label></div>
       <dl id="bank-quote"></dl>
       <button class="primary" id="bank-go" disabled>Go</button>
     </div>
   </section>
 
-  <section id="tab-bonds" hidden>
+  <section id="tab-bonds" role="tabpanel" aria-labelledby="tab-btn-bonds" hidden>
     <p class="muted small">SigmaFi peer-to-peer loans on its deployed contracts. A borrower locks collateral and names the principal, the repayment and the term; a lender funds it; the borrower repays before maturity or the lender takes the collateral after. The contract pays a 0.5% developer fee to SigmaFi's author on every loan, which the page shows and cannot remove; the contract's 0.4% "interface fee" is paid to the lender's own address here.</p>
     <h2>Request a loan</h2>
     <form id="open-order" class="grid">
@@ -170,7 +173,7 @@
     </details>
   </section>
 
-  <section id="tab-escrow" hidden>
+  <section id="tab-escrow" role="tabpanel" aria-labelledby="tab-btn-escrow" hidden>
     <p class="muted small">A token sale to one named buyer at an ERG price, on TokenJay's deployed escrow contract. The seller can cancel until the buyer pays. The contract demands a small "fee" box, which the page pays to the seller, so the sale costs the miner fee only.</p>
     <h2>Your positions</h2>
     <div id="escrow-mine">connect a wallet</div>
@@ -190,7 +193,7 @@
     </form>
   </section>
 
-  <section id="tab-programs" hidden>
+  <section id="tab-programs" role="tabpanel" aria-labelledby="tab-btn-programs" hidden>
     <p class="muted small">A clocked box: a box anyone may act on for you once per interval, one slice at a time, against the token's deepest ErgoDEX pool, with no server and no key but yours. <b>Buy</b> locks ERG and buys a slice of tokens per leg, the tokens to your address (dollar-cost averaging); <b>sell</b> locks tokens and sells a slice per leg, the ERG to your address (a tranche sale). Each leg must deliver at least the pool's own rule for the slice (less your tolerance) and may pay at most the executor fee you set to whoever runs it; a price cap (buy) or floor (sell) makes the program wait while the pool is dearer or cheaper. What the box locks beyond the legs differs by side: a buy program holds no storage-rent reserve, because a rent claim on a box left for four years takes its fee from the ERG budget and leaves a smaller program; a sell program holds one rent fee for its bytes, because a token box that cannot pay rent is consumed whole, tokens included, and gets it back with the last leg. Cancel any time, everything back. The page's own upkeep and the Node runner execute due legs; the page adds no fee.</p>
     <h2>Your programs</h2>
     <div id="programs-mine">connect a wallet</div>
@@ -224,7 +227,7 @@
     </form>
   </section>
 
-  <section id="tab-options" hidden>
+  <section id="tab-options" role="tabpanel" aria-labelledby="tab-btn-options" hidden>
     <p class="muted small">An option here is a limit order you are paid to hold open, that you cannot cancel until a date. This project's own contracts (<code>contracts/Call.es</code> and <code>contracts/Put.es</code>, chartered as skunkyard SK-065): TokenJay's escrow with an offer-to-write step, a deadline that locks the writer, and no fee line. A <b>call</b>: you lock tokens and name a strike, an expiry height and a premium; whoever pays the premium may buy the tokens from you at the strike at or before the expiry; after it the tokens come back to you, and the premium is yours either way. A <b>put</b> is the mirror: you lock the ERG collateral (strike x amount) and whoever pays the premium may sell you the tokens at the strike. Until an option is sold you may cancel it; once sold, only the buyer's exercise or your reclaim after the expiry can spend it. Everything is collateralized in the box: no leverage, nothing to liquidate, no price feed, no partial exercise. The buyer's right is an address written into the box, not a token, so it cannot be resold: SigmaO and Etcha are the token-based options on Ergo. A call box also holds one storage-rent fee for its bytes (back to you on exercise or reclaim), because a token box that cannot pay rent is consumed whole; a put box holds the collateral only. The contract pays nothing to anyone and the page adds nothing; when an option you wrote has expired, the page's upkeep asks your wallet once to reclaim it.</p>
     <h2>Your positions</h2>
     <div id="options-mine">connect a wallet</div>
@@ -254,17 +257,18 @@
     </form>
   </section>
 
-  <section id="ergopay" class="panel" hidden style="margin-top:1.5rem">
-    <h2>Sign on your phone</h2>
-    <p class="small">Scan the code with the Ergo mobile wallet (Terminus on iOS), check the transaction there, and sign. The wallet submits it; this page watches the explorer for the id. <span id="ergopay-status" class="muted"></span></p>
-    <canvas id="ergopay-qr" width="0" height="0"></canvas>
+  <section id="ergopay" class="panel" hidden style="margin-top:1.5rem" tabindex="-1" aria-labelledby="ergopay-title">
+    <h2 id="ergopay-title">Sign on your phone</h2>
+    <p class="small">Scan the code with the Ergo mobile wallet (Terminus on iOS), check the transaction there, and sign. The wallet submits it; this page watches the explorer for the id. <span id="ergopay-status" class="muted" role="status" aria-live="polite"></span></p>
+    <canvas id="ergopay-qr" width="0" height="0" role="img" aria-label="QR code of the reduced transaction, for the wallet to scan"></canvas>
     <p class="small">On this device: <a id="ergopay-link" href="#">open in an ErgoPay wallet</a><br />Transaction <code id="ergopay-txid"></code> <button type="button" id="ergopay-cancel">cancel</button></p>
   </section>
 
-  <section>
-    <h2 style="margin-top:1.5rem">Log</h2>
-    <div id="log"></div>
+  <section aria-labelledby="log-title">
+    <h2 id="log-title" style="margin-top:1.5rem">Log</h2>
+    <div id="log" role="status" aria-live="polite"></div>
   </section>
+  </main>
 
   <footer class="muted small" style="margin-top:1.5rem">
     <a href="https://github.com/cafebedouin/freedex">Source on GitHub</a> (CC0): fork it, host it, read every builder.

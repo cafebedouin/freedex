@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { MockChain } from "@fleet-sdk/mock-chain";
 import { OutputBuilder, TransactionBuilder } from "@fleet-sdk/core";
 import { keylessJson } from "../src/upkeep";
-import { FEE } from "../src/orders";
+import { FEE } from "../src/protocols/machina/orders";
 
 describe("keylessJson", () => {
   it("serializes to the same id as Fleet and leaves every proof empty", () => {

@@ -1,5 +1,5 @@
 // The Bank tab: mint or redeem SigUSD and SigRSV against the SigmaUSD bank through Fleet's AgeUSD plugin.
-import { SIGRSV_ID, SIGUSD_ID, buildMint, buildRedeem, mintQuote, redeemQuote } from "../bank";
+import { SIGRSV_ID, SIGUSD_ID, buildMint, buildRedeem, mintQuote, redeemQuote } from "../protocols/sigmausd/bank";
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, dl, err, log } from "./dom";
 import type { Store } from "./store";
@@ -8,6 +8,7 @@ import { send } from "./wallet";
 export function mountBank(store: Store) {
   async function renderBank() {
     try {
+      dl($("bank-info"), [["Bank", store.explorerLabel()]]);
       const bank = await store.loadBank();
       const usdPerErg = bank.oracleRate; // nanoERG per cent
       dl($("bank-info"), [
@@ -22,7 +23,7 @@ export function mountBank(store: Store) {
       ]);
       renderBankQuote();
     } catch (e) {
-      dl($("bank-info"), [["Bank", err(e)]]);
+      dl($("bank-info"), [["Bank", `explorer unavailable (${err(e)}); open the tab again to retry`]]);
     }
   }
 
@@ -73,7 +74,13 @@ export function mountBank(store: Store) {
       const fresh = await store.loadBank();
       const build = sel.action === "mint" ? buildMint : buildRedeem;
       const user = store.wallet!.changeAddress;
-      await send(store, (height, inputs) => build({ height, inputs, user, bank: fresh, coin: sel.coin, amount }));
+      const q = sel.action === "mint" ? mintQuote(fresh, sel.coin, amount) : redeemQuote(fresh, sel.coin, amount);
+      const coin = sel.coin === "stable" ? "SigUSD" : "SigRSV";
+      const what =
+        sel.action === "mint"
+          ? `Mint ${formatUnits(amount, sel.dec)} ${coin} from the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and the miner fee included`
+          : `Redeem ${formatUnits(amount, sel.dec)} ${coin} at the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and the miner fee taken out`;
+      await send(store, (height, inputs) => build({ height, inputs, user, bank: fresh, coin: sel.coin, amount }), what);
       $<HTMLInputElement>("bank-amount").value = "";
       setTimeout(() => void renderBank(), 3000);
     } catch (e) {

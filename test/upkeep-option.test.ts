@@ -2,7 +2,14 @@
 import { MockChain } from "@fleet-sdk/mock-chain";
 import { describe, expect, it } from "vitest";
 import type { Explorer } from "../src/explorer";
-import { CALL_TEMPLATE_SHA256, CALL_TREE, PUT_TEMPLATE_SHA256, PUT_TREE, buildBuy, buildWrite } from "../src/option";
+import {
+  CALL_TEMPLATE_SHA256,
+  CALL_TREE,
+  PUT_TEMPLATE_SHA256,
+  PUT_TREE,
+  buildBuy,
+  buildWrite,
+} from "../src/protocols/option/option";
 import { expiredOptionsFor } from "../src/upkeep";
 
 const ERG = 1_000_000_000n;

@@ -3,9 +3,10 @@
 // wallet: a matured SigmaFi bond whose lender is the visitor, whose collateral the page hands to them. The contract
 // path is keyless; the miner fee comes from the visitor's change, so the wallet is asked to sign, once per bond.
 // The same for an expired option the visitor wrote: its reclaim is the writer's key path, asked once per box.
-import { buildLiquidate } from "../bonds";
-import { buildReclaim } from "../option";
+import { buildLiquidate } from "../protocols/sigmafi/bonds";
+import { buildReclaim } from "../protocols/option/option";
 import { expiredOptionsFor, maturedBondsFor, runUpkeep } from "../upkeep";
+import { ERG_DECIMALS, formatUnits } from "../units";
 import { $, err, log } from "./dom";
 import type { Store } from "./store";
 import { send } from "./wallet";
@@ -35,8 +36,16 @@ export function mountUpkeep(store: Store) {
         if (asked.has(box.boxId)) continue;
         asked.add(box.boxId);
         try {
-          const id = await send(store, (height, inputs) =>
-            buildLiquidate({ height, inputs, recipient: wallet.changeAddress, bondBox: box }),
+          const assets = [
+            ...(v.collateralErg > 0n ? [`${formatUnits(v.collateralErg, ERG_DECIMALS)} ERG`] : []),
+            ...v.collateralTokens.map(
+              (t) => `${formatUnits(t.amount, store.decimalsOf(t.tokenId))} ${store.nameOf(t.tokenId)}`,
+            ),
+          ].join(" and ");
+          const id = await send(
+            store,
+            (height, inputs) => buildLiquidate({ height, inputs, recipient: wallet.changeAddress, bondBox: box }),
+            `Upkeep: take the collateral (${assets}) of the bond you lent on, matured at height ${v.maturity}; you pay the miner fee`,
           );
           collateral++;
           log(
@@ -51,8 +60,10 @@ export function mountUpkeep(store: Store) {
         if (asked.has(box.boxId)) continue;
         asked.add(box.boxId);
         try {
-          const id = await send(store, (h, inputs) =>
-            buildReclaim({ height: h, inputs, writer: wallet.changeAddress, optionBox: box }),
+          const id = await send(
+            store,
+            (h, inputs) => buildReclaim({ height: h, inputs, writer: wallet.changeAddress, optionBox: box }),
+            `Upkeep: reclaim the ${v.side} you wrote on ${formatUnits(v.amount, store.decimalsOf(v.tokenId))} ${store.nameOf(v.tokenId)}, expired at height ${v.expiry}: ${v.side === "call" ? "the tokens and the reserve" : `the ${formatUnits(v.value, ERG_DECIMALS)} ERG collateral`} back to you; you pay the miner fee`,
           );
           collateral++;
           log(

@@ -1,7 +1,7 @@
 // Smoke test against mainnet: list open E2T limit orders through the page's own explorer client and describe().
 // Run: node scripts/list-orders.ts   (Node 23+ strips types; no build needed)
 import { Explorer } from "../src/explorer.ts";
-import { capacity, describe } from "../src/orders.ts";
+import { capacity, describe } from "../src/protocols/machina/orders.ts";
 
 const explorer = new Explorer(process.env.VITE_EXPLORER);
 const height = await explorer.height();
