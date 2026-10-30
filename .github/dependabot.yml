@@ -10,5 +10,10 @@ updates:
     groups:
       all-npm:
         patterns: ["*"]
+    # @nautls/machinafi-sdk 0.1.0 declares peer typescript ^5, so npm ci refuses a TypeScript major bump (pull
+    # request #2, typescript 7.0.2: ERESOLVE). Drop this once the SDK accepts the new major.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps"
