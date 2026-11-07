@@ -14,26 +14,35 @@ Constants there: `feePercent = 2`, `minReserveRatioPercent = 400`, `defaultMaxRe
 
 ## `loadBank`
 
-1. Throws `bank or oracle box not found` (`bank.ts:22`) when either NFT has no unspent box.
-2. Everything from the chain: the bank box by `BANK_NFT`, the oracle box by `ORACLE_NFT` (`explorer.byToken`, not
-   cached); re-read right before every build at `src/ui/bank.ts`.
+1. Throws `no unspent box holds <id>…` (`explorer.ts`, `latestByToken`) when either NFT has no unspent box.
+2. Everything from the chain, mempool included: the bank box by `BANK_NFT`, the oracle box by `ORACLE_NFT`, each
+   through `explorer.latestByToken` (not cached): the confirmed box, then each unconfirmed transaction that spends
+   it followed to the output that carries the NFT on, up to `MAX_CHAIN` (25) deep, the mempool asked by the
+   current box's address at each step. A failed mempool read stops the walk where it is. Re-read right before
+   every build at `src/ui/bank.ts`. Why: the bank box is spent every few blocks (12 spends in blocks 1911093 to
+   1911128, three of those blocks with two, by a bot at `9eyeUPrWJcWh…` trading cents of SigUSD at 0.0011 ERG
+   fee; explorer `/boxes/byTokenId`, 2026-11-06), and a build on the confirmed box while such a spend is in the
+   mempool is refused by every node as a double spend. Chaining puts the page's transaction after the pending one.
+   Tests: `test/chain.test.ts`.
 3. The plugin reads R4 (SigUSD in circulation), R5 (SigRSV in circulation), the three tokens, and the oracle's R4
    divided by `10 ** decimals` as nanoERG per cent (`index.mjs:32`); the contract reads
    `val rate = rateBox.R4[Long].get / 100` (AgeUSD.scala:43).
 4. n/a.
 5. `bank.test.ts` seeds the bank at a 667% ratio and asserts `reserveRatio` between 400 and 800.
 6. The oracle box is a data input; a transaction built against an oracle box that is replaced before mining is
-   invalid, not mispriced.
+   invalid, not mispriced. A chained transaction depends on the pending ones before it: if one of those is dropped,
+   the page's transaction is dropped with it. A spend of the bank that reaches the mempool between the build and
+   the wallet's submission still conflicts; the node then keeps whichever pays more per byte [UNVERIFIED: from the node's mempool code as remembered, not read here]. At the page's usual 0.001 ERG on a transaction of about the same size (a 1-SigRSV mint from a two-box address reduces to 1,248 bytes) the page lost to the bot's 0.0011 ERG on about 1,190 bytes; bank transactions therefore pay `BANK_FEE`, 0.003 ERG (`bank.ts`), about 2.5 times the bot's rate per byte.
 
 ## `mintQuote` and `redeemQuote`
 
 1. Nothing thrown; `allowed` carries the plugin's `canMint` / `canRedeem` (`bank.ts:36`, `:44`).
 2. The user sets the coin (SigUSD, 2 decimals; SigRSV, 0) and the amount; everything else from the two boxes.
-3. Mint cost (`getMintingCostFor(amount, coin, "total", FEE)`, `index.mjs:192-201`):
-   `base = price * amount`; `cost = base + percent(base, 2) + FEE` where `percent(v, 2) = v * 2 / 100`
+3. Mint cost (`getMintingCostFor(amount, coin, "total", BANK_FEE)`, `index.mjs:192-201`):
+   `base = price * amount`; `cost = base + percent(base, 2) + BANK_FEE` where `percent(v, 2) = v * 2 / 100`
    (`@fleet-sdk/common`, `index.mjs:223-225`, integer division, rounded down). The contract:
    `val fee = brDeltaExpected * $feePercent / 100` and `brDeltaExpectedWithFee = brDeltaExpected + actualFee`
-   (AgeUSD.scala:127-131). Redeem (`getRedeemingAmountFor`, `index.mjs:203-213`): `base - percent(base, 2) - FEE`,
+   (AgeUSD.scala:127-131). Redeem (`getRedeemingAmountFor`, `index.mjs:203-213`): `base - percent(base, 2) - BANK_FEE`,
    floored at 0. The price: SigUSD `min(oracleRate, liabilities / circulatingStable)` (`index.mjs:78-80`;
    contract `scNominalPrice = min(rate, liableRate)`, line 117-118), SigRSV `equity / circulatingReserve` or the
    default 1,000,000 nanoERG when there is no equity or at most one coin (`index.mjs:82-88`; contract lines
@@ -59,7 +68,7 @@ oracleRate`, which equals the contract's `bcReserveOut * 100 / bcReserveNeededOu
 3. The plugin (`index.mjs:273-359`): the bank successor at output 0 with the value moved by the base amount plus
    the fee, the token amounts and R4/R5 moved by the amount; the recipient's box at output 1 (`SAFE_MIN_BOX_VALUE`
    plus the coins on a mint; the redeem proceeds less the miner fee on a redeem) carrying R4 = the circulation
-   delta and R5 = the nanoERG delta; the oracle as data input 0; the miner fee set to `FEE`. The page adds no
+   delta and R5 = the nanoERG delta; the oracle as data input 0; the miner fee set to `BANK_FEE` (0.003 ERG; item 6 of `loadBank` says why). The page adds no
    implementor output (`implementorAddress` unset, `:354`).
 4. The contract also checks the bank keeps at least `minStorageRent` (line 88), the oracle data input's NFT, the
    token ids and the register updates; the builder relies on the plugin for all of them.

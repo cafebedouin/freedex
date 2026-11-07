@@ -67,7 +67,11 @@ two tokens` (not four), `pool box has no R4` (`amm.ts:35-38`, `:247-250`).
 2. The user sets the direction, `amountIn` (typed, parsed exactly by `parseUnits`) and the slippage tolerance;
    `minOut` is computed on the page from the quote the user saw (`src/ui/swap.ts`) and kept until the
    amount changes; the pool box is re-read by NFT at `src/ui/swap.ts` (`poolByNft` or `t2tPoolByNft`) right
-   before the build, so `out` is the fresh pool's figure and `minOut` the shown one. See `signing.md` for the
+   before the build, so `out` is the fresh pool's figure and `minOut` the shown one. Both reads chain off the
+   mempool: from the confirmed box they follow each unconfirmed swap on the same pool to its successor (`explorer.ts`,
+   `#follow`, the walk `latestByToken` uses; see `bank.md`), keeping the confirmed box when a successor is not shaped
+   like the pool (NFT first, three or four tokens). Every N2T pool shares one script, so one mempool read by that
+   address serves the walk. Tests: `test/chain.test.ts`. See `signing.md` for the
    stale-quote refusal ("the quote is stale").
 3. `out = quote(...)` as above; the successor holds `x + dx` and `y + dy`, the LP amount copied from the input
    box (`BigInt(p.poolBox.assets[1].amount)`, so `deltaSupplyLP == 0`), R4 copied; the user's output carries `out`

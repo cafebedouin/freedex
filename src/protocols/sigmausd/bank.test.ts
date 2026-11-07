@@ -3,7 +3,8 @@ import { MockChain } from "@fleet-sdk/mock-chain";
 import { afterEach, describe, expect, it } from "vitest";
 import { SIGMA_USD_PARAMETERS, SigmaUSDBank } from "@fleet-sdk/ageusd-plugin";
 import { SLong } from "@fleet-sdk/serializer";
-import { buildMint, buildRedeem, mintQuote, redeemQuote } from "./bank";
+import { FEE_CONTRACT } from "@fleet-sdk/core";
+import { BANK_FEE, buildMint, buildRedeem, mintQuote, redeemQuote } from "./bank";
 
 const P = SIGMA_USD_PARAMETERS;
 const ERG = 1_000_000_000n;
@@ -57,6 +58,8 @@ describe("SigmaUSD bank", () => {
       coin: "stable",
       amount: 1_000n,
     });
+    // the miner fee is the bank's own, 0.003 ERG, and the quote counts it
+    expect(mint.outputs.filter((o) => o.ergoTree === FEE_CONTRACT).map((o) => BigInt(o.value))).toEqual([BANK_FEE]);
     expect(chain.execute(mint, { signers: [user] })).toBe(true);
     expect(user.balance.tokens).toEqual([{ tokenId: P.tokens.stableCoinId, amount: 1_000n }]);
     expect(before - user.balance.nanoergs).toBe(q.erg);
@@ -72,6 +75,7 @@ describe("SigmaUSD bank", () => {
       coin: "stable",
       amount: 1_000n,
     });
+    expect(red.outputs.filter((o) => o.ergoTree === FEE_CONTRACT).map((o) => BigInt(o.value))).toEqual([BANK_FEE]);
     expect(chain.execute(red, { signers: [user] })).toBe(true);
     expect(user.balance.tokens).toEqual([]);
     expect(r.erg).toBeLessThan(q.erg); // the two fees

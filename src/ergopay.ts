@@ -125,7 +125,8 @@ export function phoneSigner(address: ErgoAddress, explorer: Explorer, hooks: Pho
   const spent = new Map<string, number>();
 
   async function utxos(): Promise<Box<string>[]> {
-    const boxes = await explorer.unspentByAddress(encoded);
+    // the mempool counted: a box a pending transaction spends is left out, its unconfirmed change is spendable
+    const boxes = await explorer.unspentByAddressChained(encoded);
     for (const [id, at] of spent) if (now() - at > SPENT_MEMORY_MS) spent.delete(id);
     return boxes.filter((b) => !spent.has(b.boxId)).map(toEip12Box);
   }

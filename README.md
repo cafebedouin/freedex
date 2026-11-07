@@ -24,7 +24,8 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   wallet.
 
 - **Bank**: mint or redeem SigUSD and SigRSV directly against the SigmaUSD bank at the oracle price, through Fleet's
-  AgeUSD plugin with no implementor fee. The bank's own 2% protocol fee applies. The Swap tab quotes the bank beside
+  AgeUSD plugin with no implementor fee. The bank's own 2% protocol fee applies; the miner fee is 0.003 ERG here
+  (see What a trade costs). The Swap tab quotes the bank beside
   the pool for these two tokens and says which is better; it never picks for you.
 - **Bonds**: SigmaFi peer-to-peer loans on their deployed contracts. Request a loan against collateral, fund one,
   repay before maturity, or take the collateral after. SigmaFi's contract pays a 0.5% developer fee to its author on
@@ -77,14 +78,17 @@ sign (the amounts and the fee), on the status line under the tabs and in the log
 
 ## What a trade costs
 
-|                                 | FreeDEX                                   | the order-box route most front ends use                                       |
-| ------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------- |
-| miner fee                       | 0.001 ERG, the network minimum, once      | one for your order transaction and one for the execution transaction          |
-| pool fee to liquidity providers | the pool's own (0.3% to 1%, shown)        | the same                                                                      |
-| executor fee                    | none: your wallet submits the swap itself | paid to the bot that executes your order box (the order contract reserves it) |
-| interface fee                   | none                                      | some front ends add one                                                       |
+|                                 | FreeDEX                                                               | the order-box route most front ends use                                       |
+| ------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| miner fee                       | 0.001 ERG, the network minimum, once (0.003 ERG at the SigmaUSD bank) | one for your order transaction and one for the execution transaction          |
+| pool fee to liquidity providers | the pool's own (0.3% to 1%, shown)                                    | the same                                                                      |
+| executor fee                    | none: your wallet submits the swap itself                             | paid to the bot that executes your order box (the order contract reserves it) |
+| interface fee                   | none                                                                  | some front ends add one                                                       |
 
 So a FreeDEX swap costs the pool's fee plus 0.001 ERG. Nothing else, and nothing to anyone running the page. The
+one exception to 0.001 is the SigmaUSD bank: every mint and redeem pays 0.003 ERG, because the bank box is shared
+and spent every few blocks by a bot, and when two spends of it clash a node keeps the one paying more per byte; at
+0.001 the page's transaction lost that tie. The
 other column describes the proxy-order design (an order box executed by an off-chain bot), not any one site's
 numbers. Where a protocol's own contract carries a fee (SigmaFi's 0.5% to its developer, the SigmaUSD bank's 2%),
 the page shows it; it adds none of its own anywhere. A program's executor fee is the owner's choice, paid per leg

@@ -48,7 +48,7 @@
     <div><select id="explorer-pick" class="small" aria-label="explorer API the page reads" title="which explorer API the page reads; it falls back to the next on failure"></select> <span id="explorer-status" class="muted small" role="status" aria-live="polite"></span> <span id="wallet"></span></div>
   </header>
   <main>
-  <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
+  <p class="muted small">Static files, no server, no keys in the page, no fee of its own. Your wallet signs. A trade costs the miner fee (0.001 ERG; 0.003 ERG on every SigmaUSD bank mint or redeem, see the Bank tab) and, for pool swaps, the pool's own fee to its liquidity providers. Nothing else.</p>
   <p class="small"><label><input type="checkbox" id="upkeep-on" checked /> Chain upkeep while you are here: the page looks for boxes anyone may act on for a bounty (Babel bids and Machina limit orders priced across their pool, and the legs of clocked programs that are due), builds those transactions with no signature and none of your funds, and sends the bounty to your address. If a SigmaFi bond you lent on has matured, or an option you wrote has expired, it asks your wallet once to sign the transaction that hands you the collateral or the box (you pay the miner fee). <span id="upkeep-status" class="muted" role="status" aria-live="polite"></span></label></p>
 
   <nav role="tablist" aria-label="what to do">
@@ -132,7 +132,7 @@
   <section id="tab-bank" role="tabpanel" aria-labelledby="tab-btn-bank" hidden>
     <div class="panel">
       <h2>SigmaUSD bank</h2>
-      <p class="muted small">Mint or redeem SigUSD and SigRSV directly against the bank at the oracle price. The bank's own 2% protocol fee applies; the page adds nothing. Minting SigUSD is allowed while the reserve ratio stays above 400%, minting SigRSV while it stays below 800%.</p>
+      <p class="muted small">Mint or redeem SigUSD and SigRSV directly against the bank at the oracle price. The bank's own 2% protocol fee applies; the page adds nothing. The miner fee here is 0.003 ERG on every mint and redeem, not the 0.001 used elsewhere: the bank box is shared and a bot spends it every few blocks, and a node keeps whichever of two clashing spends pays more, so the higher fee keeps a bot trade that lands while you sign from pushing yours out. Minting SigUSD is allowed while the reserve ratio stays above 400%, minting SigRSV while it stays below 800%.</p>
       <dl id="bank-info">loading…</dl>
       <div class="row"><select id="bank-action" aria-label="bank action"><option value="mint:stable">mint SigUSD</option><option value="redeem:stable">redeem SigUSD</option><option value="mint:reserve">mint SigRSV</option><option value="redeem:reserve">redeem SigRSV</option></select><span></span></div>
       <div class="row"><input type="text" id="bank-amount" inputmode="decimal" placeholder="amount" autocomplete="off" /><label for="bank-amount" id="bank-amount-name">SigUSD</label></div>

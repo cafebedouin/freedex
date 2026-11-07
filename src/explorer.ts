@@ -1,5 +1,6 @@
 // Reads from a public explorer API. No keys, no writes except transaction submission, which the wallet does.
 import type { Box } from "@fleet-sdk/common";
+import { ErgoAddress } from "@fleet-sdk/core";
 import { hashOf } from "./registry.ts";
 
 export const DEFAULT_EXPLORER = "https://api.ergoplatform.com";
@@ -46,7 +47,43 @@ interface ExplorerBox {
   ergoTree: string;
   creationHeight: number;
   assets: { tokenId: string; amount: number | string | bigint; name?: string; decimals?: number }[];
-  additionalRegisters: Record<string, ExplorerRegister>;
+  /** `{serializedValue, …}`, confirmed and mempool alike (seen 2026-11-06); the OpenAPI schema says a bare hex string for mempool boxes, so that is read too */
+  additionalRegisters: Record<string, ExplorerRegister | string>;
+}
+
+/** A transaction in the explorer's mempool listing: what it spends and the boxes it creates. */
+export interface MempoolTx {
+  id: string;
+  inputs?: { boxId: string }[];
+  outputs?: ExplorerBox[];
+}
+
+/** How many unconfirmed transactions in a row `latestByToken` follows before it stops. */
+export const MAX_CHAIN = 25;
+
+/**
+ * The box that spends `current` in the mempool and carries `tokenId` on, if a transaction in `txs` spends it.
+ * A singleton token (a bank's or a pool's NFT) leaves through exactly one output.
+ */
+export function nextInChain(current: string, tokenId: string, txs: MempoolTx[]): Box<bigint> | undefined {
+  const tx = txs.find((t) => (t.inputs ?? []).some((i) => i.boxId === current));
+  const out = tx?.outputs?.find((o) => o.assets.some((a) => a.tokenId === tokenId));
+  return out ? toFleetBox(out) : undefined;
+}
+
+/**
+ * An address's spendable boxes once the mempool is counted: the confirmed ones its pending transactions have not
+ * spent, plus the outputs those transactions pay back to the same script that nothing in the mempool spends yet.
+ */
+export function chainUnspent(confirmed: Box<bigint>[], txs: MempoolTx[], ergoTree: string): Box<bigint>[] {
+  const spent = new Set(txs.flatMap((t) => (t.inputs ?? []).map((i) => i.boxId)));
+  const pending = txs.flatMap((t) => (t.outputs ?? []).filter((o) => o.ergoTree === ergoTree).map(toFleetBox));
+  const seen = new Set<string>();
+  return [...confirmed, ...pending].filter((b) => {
+    if (spent.has(b.boxId) || seen.has(b.boxId)) return false;
+    seen.add(b.boxId);
+    return true;
+  });
 }
 
 export interface PoolEntry {
@@ -196,12 +233,23 @@ export class Explorer {
       }));
   }
 
-  /** The current box of one pool, by its NFT: fetched fresh right before a swap is built. */
+  /** The current box of one pool, by its NFT, mempool included: fetched fresh right before a swap is built. */
   async poolByNft(nft: string): Promise<PoolEntry> {
     const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byTokenId/${nft}?limit=5`);
     const b = r.items.find((x) => x.assets.length === 3 && x.assets[0].tokenId === nft);
     if (!b) throw new Error("pool box not found");
-    return { box: toFleetBox(b), tokenName: b.assets[2].name ?? "", tokenDecimals: b.assets[2].decimals ?? 0 };
+    const box = await this.#poolChain(toFleetBox(b), nft, 3);
+    return { box, tokenName: b.assets[2].name ?? "", tokenDecimals: b.assets[2].decimals ?? 0 };
+  }
+
+  /**
+   * A pool's newest box, chained off the mempool (`#follow`) so a swap is built after a pending swap on the same
+   * pool rather than against it. A successor that is not shaped like the pool (NFT first, `assets` tokens) is not
+   * used: the confirmed box is.
+   */
+  async #poolChain(confirmed: Box<bigint>, nft: string, assets: number): Promise<Box<bigint>> {
+    const latest = await this.#follow(confirmed, nft);
+    return latest.assets.length === assets && latest.assets[0].tokenId === nft ? latest : confirmed;
   }
 
   /** Every token-to-token pool box (NFT, LP token, token X, token Y). */
@@ -216,11 +264,12 @@ export class Explorer {
     return r.items.filter((b) => b.assets.length === 4).map(t2tEntry);
   }
 
+  /** The same for a token-to-token pool. */
   async t2tPoolByNft(nft: string): Promise<T2TPoolEntry> {
     const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byTokenId/${nft}?limit=5`);
     const b = r.items.find((x) => x.assets.length === 4 && x.assets[0].tokenId === nft);
     if (!b) throw new Error("pool box not found");
-    return t2tEntry(b);
+    return { ...t2tEntry(b), box: await this.#poolChain(toFleetBox(b), nft, 4) };
   }
 
   /** Every unspent EIP-31 Babel box, any token. */
@@ -250,10 +299,69 @@ export class Explorer {
     return r.items.map(toFleetBox);
   }
 
-  /** Unspent boxes at an address, newest first, as the phone signer's inputs. Not cached. */
+  /** Unspent boxes at an address, newest first, as the phone signer's inputs. Not cached. Confirmed state only. */
   async unspentByAddress(address: string, limit = 100): Promise<Box<bigint>[]> {
     const r = await this.#json<{ items: ExplorerBox[] }>(`/api/v1/boxes/unspent/byAddress/${address}?limit=${limit}`);
     return r.items.map(toFleetBox);
+  }
+
+  /** Unconfirmed transactions that spend from or pay to an address. Not cached. */
+  async mempoolByAddress(address: string, limit = 100): Promise<MempoolTx[]> {
+    const r = await this.#json<{ items?: MempoolTx[] }>(
+      `/api/v1/mempool/transactions/byAddress/${address}?limit=${limit}`,
+    );
+    return r.items ?? [];
+  }
+
+  /**
+   * An address's boxes with its pending transactions counted (`chainUnspent`), so a build does not reuse a box the
+   * mempool already spends and can spend change that has not confirmed. A failed mempool read gives the confirmed set.
+   */
+  async unspentByAddressChained(address: string, limit = 100): Promise<Box<bigint>[]> {
+    const confirmed = await this.unspentByAddress(address, limit);
+    let txs: MempoolTx[];
+    try {
+      txs = await this.mempoolByAddress(address);
+    } catch {
+      return confirmed;
+    }
+    return chainUnspent(confirmed, txs, ErgoAddress.fromBase58(address).ergoTree);
+  }
+
+  /**
+   * The newest box of a singleton token, chained off the mempool the way tokenjay.app does: start from the
+   * confirmed box and follow each unconfirmed transaction that spends it, up to MAX_CHAIN deep. A shared box like
+   * the SigmaUSD bank is spent every few blocks; building on the confirmed box while a spend of it sits in the
+   * mempool is what the node refuses as a double spend. The script may change along the way (an oracle pool's
+   * epoch boxes), so each step asks the mempool by the current box's address. A failed mempool read stops the walk
+   * where it is.
+   */
+  async latestByToken(tokenId: string): Promise<Box<bigint>> {
+    const [confirmed] = await this.byToken(tokenId, 1);
+    if (!confirmed) throw new Error(`no unspent box holds ${tokenId.slice(0, 8)}…`);
+    return this.#follow(confirmed, tokenId);
+  }
+
+  /** From a confirmed box, each unconfirmed spend that carries `tokenId` on, up to MAX_CHAIN deep (see `latestByToken`). */
+  async #follow(confirmed: Box<bigint>, tokenId: string): Promise<Box<bigint>> {
+    const byAddress = new Map<string, MempoolTx[]>();
+    let current = confirmed;
+    for (let depth = 0; depth < MAX_CHAIN; depth++) {
+      const address = ErgoAddress.fromErgoTree(current.ergoTree).encode();
+      let txs = byAddress.get(address);
+      if (!txs) {
+        try {
+          txs = await this.mempoolByAddress(address);
+        } catch {
+          return current;
+        }
+        byAddress.set(address, txs);
+      }
+      const next = nextInChain(current.boxId, tokenId, txs);
+      if (!next) return current;
+      current = next;
+    }
+    return current;
   }
 
   /** The last `n` block headers, newest first, as the explorer serves them; sigma-rust's binding parses them as is. */
@@ -340,7 +448,8 @@ function t2tEntry(b: ExplorerBox): T2TPoolEntry {
 
 export function toFleetBox(b: ExplorerBox): Box<bigint> {
   const registers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(b.additionalRegisters)) registers[k] = v.serializedValue;
+  for (const [k, v] of Object.entries(b.additionalRegisters))
+    registers[k] = typeof v === "string" ? v : v.serializedValue;
   return {
     boxId: b.boxId,
     transactionId: b.transactionId,

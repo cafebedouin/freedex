@@ -21,7 +21,8 @@ describe("Bank tab", () => {
     type("bank-amount", "10");
     const q = rows("bank-quote");
     expect(q["Allowed by the bank"]).toBe("yes");
-    expect(q["You pay (all fees in)"]).toBe("30.601 ERG"); // 10 USD at 3 ERG plus 2% plus the miner fee
+    expect(q["Miner fee"]).toBe("0.003 ERG (included above; raised for the bank, see the note)");
+    expect(q["You pay (all fees in)"]).toBe("30.603 ERG"); // 10 USD at 3 ERG plus 2% plus the bank's 0.003 ERG miner fee
     expect(el<HTMLButtonElement>("bank-go").textContent).toBe("Connect a wallet");
   });
 

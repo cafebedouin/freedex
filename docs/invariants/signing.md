@@ -21,8 +21,10 @@ slippage minimum). No registry entry: nothing here is a contract. Tests `test/er
 
 1. Throws `connect a wallet first` with no signer. Everything else is the builder's or the signer's.
 2. The page builds: `height` from the signer (`wallet.ts:49`, `api.get_current_height()`; the explorer's height for
-   the phone), `inputs` from the signer's full unspent list (`get_utxos()`, or `unspentByAddress` less the boxes a
-   phone-signed transaction spent, `ergopay.ts:127-131`), then the tab's builder with those. Fleet's
+   the phone), `inputs` from the signer's full unspent list (`get_utxos()`, or for the phone
+   `unspentByAddressChained`: the confirmed boxes less those a pending transaction spends, plus that address's
+   unconfirmed change, `explorer.ts` `chainUnspent`; then less the boxes a phone-signed transaction spent,
+   `ergopay.ts`), then the tab's builder with those. Fleet's
    `TransactionBuilder` selects the inputs it needs from that list, adds the change output to `changeAddress` and
    the miner fee output of `FEE` (0.001 ERG, `orders.ts`). The transaction the wallet sees is complete: inputs,
    outputs, fee, change.
@@ -99,9 +101,9 @@ transaction <id>… seen in 20 minutes; build it again to retry` after `POLL_TIM
    transaction too large for a code before showing anything". `test/ui/phone.test.ts`: "refuses an address that is
    not mainnet", "cancel stops the wait", and "is refused with the size, and nothing is shown".
 6. Spent-input memory: the inputs of a transaction the explorer has seen are left out of the next build for
-   `SPENT_MEMORY_MS` (15 minutes, `:22`, `:129`), because the explorer lists them as unspent until the block. A
-   box spent by another wallet meanwhile is unknown to the page until the explorer drops it; the node then refuses
-   the transaction. Cancel only stops the page's wait; a phone that already scanned may still sign and submit, and
+   `SPENT_MEMORY_MS` (15 minutes, `:22`), a backstop for the window before the explorer's mempool listing carries
+   the transaction. A box spent by another wallet is left out once that spend is in the explorer's mempool listing
+   (`chainUnspent`); before then the node refuses the transaction as a double spend. Cancel only stops the page's wait; a phone that already scanned may still sign and submit, and
    the id is then seen by the next build's explorer reads, not by this one.
 
 ## Limits

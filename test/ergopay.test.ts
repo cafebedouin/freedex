@@ -102,7 +102,7 @@ describe("the signer", () => {
     const explorer = {
       height: async () => 1_905_000,
       headers: async (n: number) => headers.slice(0, n),
-      unspentByAddress: async () => boxes,
+      unspentByAddressChained: async () => boxes,
       seen: async (txId: string, address: string) => {
         calls.seen.push([txId, address]);
         return ++polls > seenAfter;

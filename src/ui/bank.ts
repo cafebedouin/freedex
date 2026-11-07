@@ -1,5 +1,13 @@
 // The Bank tab: mint or redeem SigUSD and SigRSV against the SigmaUSD bank through Fleet's AgeUSD plugin.
-import { SIGRSV_ID, SIGUSD_ID, buildMint, buildRedeem, mintQuote, redeemQuote } from "../protocols/sigmausd/bank";
+import {
+  BANK_FEE,
+  SIGRSV_ID,
+  SIGUSD_ID,
+  buildMint,
+  buildRedeem,
+  mintQuote,
+  redeemQuote,
+} from "../protocols/sigmausd/bank";
 import { ERG_DECIMALS, formatUnits, parseUnits } from "../units";
 import { $, dl, err, log } from "./dom";
 import type { Store } from "./store";
@@ -55,6 +63,7 @@ export function mountBank(store: Store) {
           sel.action === "mint" ? "You pay (all fees in)" : "You receive (all fees out)",
           `${formatUnits(q.erg, ERG_DECIMALS)} ERG`,
         ],
+        ["Miner fee", `${formatUnits(BANK_FEE, ERG_DECIMALS)} ERG (included above; raised for the bank, see the note)`],
         ["Reserve ratio after", `${q.reserveRatioAfter}%`],
         ["Allowed by the bank", q.allowed ? "yes" : "no (the ratio would leave the band)"],
       ]);
@@ -78,8 +87,8 @@ export function mountBank(store: Store) {
       const coin = sel.coin === "stable" ? "SigUSD" : "SigRSV";
       const what =
         sel.action === "mint"
-          ? `Mint ${formatUnits(amount, sel.dec)} ${coin} from the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and the miner fee included`
-          : `Redeem ${formatUnits(amount, sel.dec)} ${coin} at the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and the miner fee taken out`;
+          ? `Mint ${formatUnits(amount, sel.dec)} ${coin} from the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and a ${formatUnits(BANK_FEE, ERG_DECIMALS)} ERG miner fee included`
+          : `Redeem ${formatUnits(amount, sel.dec)} ${coin} at the bank for ${formatUnits(q.erg, ERG_DECIMALS)} ERG, the bank's 2% fee and a ${formatUnits(BANK_FEE, ERG_DECIMALS)} ERG miner fee taken out`;
       await send(store, (height, inputs) => build({ height, inputs, user, bank: fresh, coin: sel.coin, amount }), what);
       $<HTMLInputElement>("bank-amount").value = "";
       setTimeout(() => void renderBank(), 3000);

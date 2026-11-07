@@ -2,6 +2,27 @@
 
 Every entry is a push to `main` (one Pages run each); the commit is named. Dates are the commit dates.
 
+## 2026-11-06: chaining off the mempool, and the bank's fee
+
+- The bank box and the oracle box are read through `explorer.latestByToken`, which starts from the confirmed box
+  and follows each unconfirmed transaction that spends it, the way tokenjay.app chains. Before this a SigRSV or
+  SigUSD mint built on the confirmed bank box while someone's spend of it sat in the mempool, and every node
+  refused it as an attempted double spend; the bank is spent every few blocks by a trading bot.
+- The phone signer's boxes come from `explorer.unspentByAddressChained`: confirmed boxes a pending transaction
+  spends are left out and that address's unconfirmed change is spendable, so a second transaction can follow the
+  first without waiting for a block.
+- `toFleetBox` also reads a register given as bare hex, the shape the explorer's OpenAPI schema gives mempool
+  boxes; the live mempool listing carries the same `{serializedValue, …}` objects as confirmed boxes (2026-11-06).
+- Pool reads chain the same way: `poolByNft` and `t2tPoolByNft` (every swap, deposit, redeem, program step and
+  the upkeep runner's pool read) follow pending swaps on the pool to its newest box, so a swap is built after a
+  pending one instead of against it.
+- Bank transactions pay a 0.003 ERG miner fee (`BANK_FEE`), up from the page's usual 0.001. A bot's spend that
+  reaches the mempool while the phone is signing still conflicts with the page's mint; at 0.001 ERG on about
+  1,250 bytes the page's transaction lost that tie to the bot's 0.0011 ERG on about 1,190, and at 0.003 it wins
+  it. The front page's fee line, the Bank tab's note, its quote (a "Miner fee" row) and its sentence before the
+  wallet prompt say 0.003 ERG; the README's cost table names the exception.
+- `test/chain.test.ts` (11 tests); `bank.test.ts` checks the fee output.
+
 ## v0.1.0, 2026-10-29: hardening
 
 The commit this tag sits on. No builder's behaviour changed except one new refusal found by a property test.
