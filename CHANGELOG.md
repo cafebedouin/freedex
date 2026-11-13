@@ -22,6 +22,12 @@ Every entry is a push to `main` (one Pages run each); the commit is named. Dates
 - `scripts/mainnet-run.ts`: unsigned LithosDex and Machina test transactions for an address, for a separate signer;
   a liquidity provider's cycle straight against the pool (P0 to P6), the deposit and redeem orders placed and
   cancelled (L6, L7), the `--max-loss` each needs, and the address's provisions in `status`.
+- `scripts/mainnet-run.ts` fixes from the mainnet run: `--use` now overrides the provider steps' "no other tokens"
+  filter (a provision NFT in a box with other tokens made P3 fail with "no wallet box holds the ownership NFT"); L4
+  leaves boxes holding a provision NFT out of its order (the NFT no longer lands in the change with unrelated
+  tokens; their LIT is not sold, and the note says how much); `--node <url>` asks that node for every input
+  (`/utxo/byId`, then `/utxo/withPool/byId`) before the file is written and refuses to write when one is not
+  visible. The selection and the node check are `scripts/mainnet-run-lib.ts`, tested in `test/mainnet-run.test.ts`.
 - `ergo-lib-wasm-nodejs-028` (an npm alias of 0.28.0) for the library tests' negative control.
 - Experimental marking: the LithosDex tab carries an "experimental" label and a notice at its top (exercised on
   mainnet with a library build that is not released yet; placing an order works on any wallet; cancel, claim,
