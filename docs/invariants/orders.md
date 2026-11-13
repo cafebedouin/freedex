@@ -87,6 +87,20 @@ names orders by the taker's action, as the SDK and the contract do (`orders.ts:1
 5. `orders.test.ts` asserts `capacity` of 100 on both sides.
 6. See `buildFill` 6.
 
+### The version-2 tree (`E2T_V2`)
+
+Live Machina orders carry an ErgoTree version 2 limit-order tree (registry `machina-e2t-limit-order-v2`,
+`a16dfa919d97`, read from mainnet boxes; the SDK 0.1.0 builds only the version-1 tree above). Same constants, same
+registers, the token id at the same offset; read side by side, the trees differ in one clause: a full fill's output
+must hold at least 0.001 ERG, where version 1 asks for more than 0.001 ERG and at least the price [read, not
+executed beyond the test below]. `orders.ts` hands the version-2 tree to the SDK's `LimitOrder` as its contract, so
+`describe`, `buildFill`, `buildClose` and the keyless take work on either tree; `buildCreate` places version 1
+unless `treeVersion: 2`; the explorer's listing asks for both templates. A close of a version-2 order spends a
+version-2 input, which a wallet signs only through a library that reads it (ergo-lib-wasm 0.29; 0.28.0 cannot).
+Test: `test/machina-v2.test.ts` over 15 recorded transactions: all 54 version-2 orders read; the 9 recorded keyless
+fills rebuild to the recorded successor byte for byte and sign and verify under 0.29; the 45 owner closes reduce to
+the owner's key; 0.28.0 fails at parse on the tree each time.
+
 ## EIP-31 Babel bids
 
 The contract is EIP-31's (`ergoplatform/eips`, `eip-0031.md` at `81edece`, fetched 2026-10-29); the registry

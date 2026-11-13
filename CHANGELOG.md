@@ -2,6 +2,20 @@
 
 Every entry is a push to `main` (one Pages run each); the commit is named. Dates are the commit dates.
 
+## Unreleased (branch `lithos`): LithosDex, Machina's version-2 orders, ergo-lib-wasm 0.29
+
+- ergo-lib-wasm 0.29.0 from sigma-rust `688511df` for both bindings, vendored in
+  `vendor/ergo-lib-wasm-0.29.0-688511df/` until the npm release (0.28.0 cannot parse ErgoTree version 2 or 3). No
+  call site changed.
+- LithosDex (`src/protocols/lithos/lithos.ts`, the LithosDex tab, `docs/invariants/lithos.md`): swap, deposit and
+  redeem orders, the owner's cancel, a provision holder's fee claim; eight registry entries. Checked against the
+  record: 51 recorded order placements and 20 recorded claims rebuild byte for byte where the builder is
+  deterministic; every cancel and claim reduces and signs under 0.29 and fails at parse under 0.28.0.
+- Machina's version-2 limit order (`E2T_V2`, registry `machina-e2t-limit-order-v2`): read, filled, closed and
+  placed; checked against 54 recorded version-2 order spends.
+- `scripts/mainnet-run.ts`: unsigned LithosDex and Machina test transactions for an address, for a separate signer.
+- `ergo-lib-wasm-nodejs-028` (an npm alias of 0.28.0) for the library tests' negative control.
+
 ## 2026-11-06: chaining off the mempool, and the bank's fee
 
 - The bank box and the oracle box are read through `explorer.latestByToken`, which starts from the confirmed box

@@ -57,6 +57,13 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   no fee to anyone. What it is not: transferable. The buyer is an address written into the box, not a token, so the
   right cannot be resold; SigmaO and Etcha are the token-based options on Ergo. No partial exercise. A call box
   holds one storage-rent fee for its bytes (back on exercise or reclaim); a put box holds the collateral only.
+- **LithosDex** (branch `lithos`, not deployed): the Lithos protocol's ERG/LIT pool through its order contracts.
+  Place a swap order (ERG for LIT or LIT for ERG) or a deposit order, which an executor fills against the pool for
+  a fixed executor fee (0.003 ERG, the official client's default); cancel your own order; claim a liquidity
+  provision's fees from the vault with its ownership NFT, or place an order to redeem it. Every LithosDex script is
+  ErgoTree version 3: any wallet signs a placement (the order is an output), but a cancel or a claim needs a wallet
+  whose library reads version 3 (sigma-rust 0.29; Nautilus 1.4 cannot). The page's own binding is ergo-lib-wasm
+  0.29, vendored from sigma-rust `688511df` until its npm release (`vendor/ergo-lib-wasm-0.29.0-688511df/`).
 - **Chain upkeep while you are here.** With a wallet connected, the page looks every few minutes for boxes anyone
   may act on for a bounty, builds those transactions with no signature and none of your funds, submits them through
   the explorer, and sends the bounty to your address. Today's jobs: Babel bids (EIP-31) priced above their token's
@@ -137,6 +144,8 @@ contents of `dist/`.
   - `babel/babel.ts`: EIP-31 Babel bids, the taker's fill and the keyless take.
   - `sigmausd/bank.ts`, `sigmafi/bonds.ts`, `tokenjay/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay
     escrow on their deployed contracts.
+  - `lithos/lithos.ts`: the LithosDex pool, vault and provisions, the four order contracts (pinned trees with
+    each term's constant index), the order, cancel and claim builders, and `signerHints`.
   - `clock/clock.ts`: the clocked box's two sides (buy and sell) and their builders (create for each side with the
     rent and length checks, the keyless leg and cancel for both); `option/option.ts`: the call and the put.
 - `src/registry.json`, `src/registry.ts`: the contract registry, the one place every tree and template hash the
@@ -170,7 +179,8 @@ its rounding direction against the contract line it mirrors, what the contract r
 pre-check, the test that proves each refusal, and the limits: [pools](docs/invariants/pools.md),
 [orders](docs/invariants/orders.md) (Machina and Babel), [bank](docs/invariants/bank.md),
 [bonds](docs/invariants/bonds.md), [escrow](docs/invariants/escrow.md), [clock](docs/invariants/clock.md),
-[option](docs/invariants/option.md), [upkeep](docs/invariants/upkeep.md), [signing](docs/invariants/signing.md).
+[option](docs/invariants/option.md), [upkeep](docs/invariants/upkeep.md), [signing](docs/invariants/signing.md),
+[lithos](docs/invariants/lithos.md).
 
 ## Units and limits
 
@@ -205,6 +215,11 @@ Only what has been run is listed; see `CHANGELOG.md` for when.
   wallet and Terminus through ErgoPay in its static mode (the page's QR code; a static code of any scannable
   length goes straight to the wallet's signing screen by its source, and the scan itself is the person's check,
   not yet recorded here); Satergo untested.
+- Wallet libraries and ErgoTree versions: placing a LithosDex order or a Machina order works on any wallet;
+  cancelling a LithosDex order, claiming its fees, and closing a version-2 Machina order spend version-2 or -3
+  inputs, which ergo-lib-wasm 0.29 reduces and signs and 0.28.0 (Nautilus 1.4) cannot parse
+  (`test/lithos-lib.test.ts`, `test/machina-v2.test.ts`, against recorded mainnet transactions; desk checks, no
+  wallet run recorded).
 - Explorers: `api.ergoplatform.com` and `api.ergo.aap.cornell.edu`, both serving `/api/v1` with cross-origin
   reads; either may be chosen in the header, and the page fails over between them.
 - Node: the contracts were checked on Fleet's mock chain (`sigmastate-js`, the node's own interpreter compiled to
