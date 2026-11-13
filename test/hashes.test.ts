@@ -4,7 +4,7 @@
 // contracts/ must compile to the bytes pinned here.
 import { describe, expect, it } from "vitest";
 import { ErgoAddress, ErgoTree } from "@fleet-sdk/core";
-import { hex, sha256 } from "@fleet-sdk/crypto";
+import { blake2b256, hex, sha256 } from "@fleet-sdk/crypto";
 import { compile } from "@fleet-sdk/compiler";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { REGISTRY, fillTemplate } from "../src/registry";
@@ -19,6 +19,13 @@ import {
 import { SIGMAFI_TEMPLATES, bondContract, orderContract } from "../src/protocols/sigmafi/bonds";
 import { CLOCK_SELL_TREE, CLOCK_SLACK, CLOCK_TREE } from "../src/protocols/clock/clock";
 import { CALL_TREE, PUT_TREE } from "../src/protocols/option/option";
+import {
+  ORDER_KINDS,
+  POOL_TREE as LITHOS_POOL_TREE,
+  PROVISION_GUARD_TREE,
+  VAULT_TREE,
+  orderTemplateSha256,
+} from "../src/protocols/lithos/lithos";
 import CLOCK_SOURCE from "../contracts/Clock.es?raw";
 import CLOCK_SELL_SOURCE from "../contracts/ClockSell.es?raw";
 import CALL_SOURCE from "../contracts/Call.es?raw";
@@ -28,14 +35,27 @@ const h = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
 const ids = Object.keys(REGISTRY);
 
 describe("the registry: every entry's hash is the SHA-256 of its template", () => {
-  it("has the eighteen entries the page builds against, each on mainnet with a 64-hex hash", () => {
-    expect(ids.length).toBe(18);
+  it("has the twenty-six entries the page builds against, each on mainnet with a 64-hex hash", () => {
+    expect(ids.length).toBe(26);
     for (const id of ids) {
       const e = REGISTRY[id];
       expect(e.network, id).toBe("mainnet");
-      expect(e.templateSha256, id).toMatch(/^[0-9a-f]{64}$/);
+      if (e.kind === "context-var") expect(e.blake2b256, id).toMatch(/^[0-9a-f]{64}$/);
+      else expect(e.templateSha256, id).toMatch(/^[0-9a-f]{64}$/);
       expect(e.licence, id).toBeTruthy();
     }
+  });
+  it.each(ids.filter((id) => REGISTRY[id].kind === "parameterized"))("%s: parameterized sample tree", (id) => {
+    const e = REGISTRY[id];
+    const t = new ErgoTree(e.sampleTree!);
+    expect(h(e.sampleTree!)).toBe(e.templateSha256);
+    const idx = Object.values(e.parameters!);
+    expect(new Set(idx).size).toBe(idx.length);
+    for (const i of idx) expect(i).toBeLessThan(t.constants.length);
+  });
+  it.each(ids.filter((id) => REGISTRY[id].kind === "context-var"))("%s: context variable bytes", (id) => {
+    const e = REGISTRY[id];
+    expect(hex.encode(blake2b256(hex.decode(e.value!)))).toBe(e.blake2b256);
   });
   it.each(ids.filter((id) => REGISTRY[id].tree))("%s: fixed tree", (id) => {
     expect(h(REGISTRY[id].tree!)).toBe(REGISTRY[id].templateSha256);
@@ -80,6 +100,19 @@ describe("the modules read the registry", () => {
     expect(h(babelTree("00".repeat(32)))).toBe(BABEL_TEMPLATE_SHA256);
     expect(BABEL_IN_BABEL).toBe(BABEL_TEMPLATE_SHA256);
     expect(E2T_LIMIT_TEMPLATE_SHA256).toBe(REGISTRY["machina-e2t-limit-order"].templateSha256);
+  });
+  it("LithosDex: the pool, vault and guard trees and the four order templates", () => {
+    expect(LITHOS_POOL_TREE).toBe(REGISTRY["lithosdex-pool"].tree);
+    expect(VAULT_TREE).toBe(REGISTRY["lithosdex-fee-vault"].tree);
+    expect(PROVISION_GUARD_TREE).toBe(REGISTRY["lithosdex-provision-guard"].tree);
+    for (const k of ORDER_KINDS) expect(orderTemplateSha256(k)).toBe(REGISTRY[`lithosdex-order-${k}`].templateSha256);
+    // the hash chain: the pool's constant 15 is the guard's blake2b256, the guard's constant the logic's
+    expect(hex.encode(new ErgoTree(LITHOS_POOL_TREE).constants[15].data as Uint8Array)).toBe(
+      hex.encode(blake2b256(hex.decode(PROVISION_GUARD_TREE))),
+    );
+    expect(hex.encode(new ErgoTree(PROVISION_GUARD_TREE).constants[0].data as Uint8Array)).toBe(
+      REGISTRY["lithosdex-provision-logic"].blake2b256,
+    );
   });
   it("SigmaFi orders and bonds, ERG and token principal", () => {
     expect(h(orderContract("ERG"))).toBe(SIGMAFI_TEMPLATES.orderOnCloseErg);

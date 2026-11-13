@@ -5,6 +5,7 @@ import { mountBonds } from "./ui/bonds";
 import { $, err, log } from "./ui/dom";
 import { mountEscrow } from "./ui/escrow";
 import { mountHeader } from "./ui/header";
+import { mountLithos } from "./ui/lithos";
 import { mountOptions } from "./ui/options";
 import { mountOrders } from "./ui/orders";
 import { mountPool } from "./ui/pool";
@@ -29,6 +30,7 @@ const tabs: Record<string, { show?: () => void; load?: () => Promise<void> }> = 
   escrow: mountEscrow(store),
   programs: mountPrograms(store),
   options: mountOptions(store),
+  lithos: mountLithos(store),
 };
 mountUpkeep(store);
 

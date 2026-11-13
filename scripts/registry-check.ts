@@ -15,7 +15,12 @@ console.log(`registry: ${entries.length} entries; explorer ${explorer.base}; hei
 for (const [id, e] of entries) {
   let line: string;
   try {
-    if (e.kind === "recipient") {
+    if (e.kind === "context-var") {
+      // bytes a spend carries in a context variable, not a box: checked by its hash in test/hashes.test.ts
+      line = `not a box: context variable, blake2b256 ${e.blake2b256?.slice(0, 16)}…`;
+      console.log(`${id.padEnd(30)} ${"-".repeat(12)}  ${line}`);
+      continue;
+    } else if (e.kind === "recipient") {
       const address = ErgoAddress.fromErgoTree(e.tree!).encode();
       const boxes = await explorer.unspentByAddress(address, 1);
       line = `${boxes.length ? "live" : "none"}: recipient ${address.slice(0, 10)}… ${boxes[0]?.boxId.slice(0, 16) ?? ""}`;
