@@ -26,7 +26,7 @@
 //   P5  refresh the address's provision: refused until the box is 525601 blocks old (about two years)
 //   P6  redeem the address's provision straight against the pool (claim first: unclaimed fees stay in the vault)
 // The two order contracts the swap steps do not spend, each placed and cancelled on its refund path:
-//   L6  deposit order, 0.001 ERG and the LIT the pool's ratio asks, its minimum twice what the pool gives: held open
+//   L6  deposit order, 0.0001 ERG and the LIT the pool's ratio asks, its minimum twice what the pool gives: held open
 //   L6c cancel the L6 order
 //   L7  redeem order for the address's provision, executor fee 0.0005 ERG (the shipped executors take none under
 //       0.001 ERG, so it stays open; anyone else may still execute it, and the proceeds would go to the address)
@@ -94,6 +94,7 @@ const FAKU = "f0cac602d618081f46db086726d3c4da53006b646b50e382989054dcf3c93bd8";
 const M_UNITS = 10n;
 const M_PRICE = 1_000_000n; // nanoERG per FAKU unit
 const L_AMOUNT = 1_000_000n; // 0.001 ERG
+const L6_AMOUNT = 100_000n; // 0.0001 ERG: the LIT the pool's ratio asks for it is about 34 million units
 const P_SHARES = 10_000_000n; // a provision whose claims pay a few tens of nanoERG per flush at the 2026-11 pool
 const L7_EXECUTOR_FEE = 500_000n; // under the shipped executors' minRevenueNanoErg (1000000): they skip the order
 const L7_MAX_MINER_FEE = 100_000n;
@@ -397,19 +398,19 @@ if (step === "L1" || step === "L3") {
   tx = buildRedeem({ height, inputs: await providerInputs("lit+nft"), owner, poolBox, provisionBox });
 } else if (step === "L6") {
   const { box: poolBox, v: p } = await poolNow();
-  const amountY = (L_AMOUNT * p.reservesY + p.reservesX - 1n) / p.reservesX;
+  const amountY = (L6_AMOUNT * p.reservesY + p.reservesX - 1n) / p.reservesX;
   if (held(LIT) < amountY)
     throw new Error(`the deposit order takes ${amountY} LIT units; the address holds ${held(LIT)}`);
-  const shares = depositShares(p, L_AMOUNT, amountY);
+  const shares = depositShares(p, L6_AMOUNT, amountY);
   const minShares = 2n * shares;
-  call = `buildDepositOrder({ amountX: ${L_AMOUNT}n, amountY: ${amountY}n, minShares: ${minShares}n })`;
+  call = `buildDepositOrder({ amountX: ${L6_AMOUNT}n, amountY: ${amountY}n, minShares: ${minShares}n })`;
   note = `held open: the pool gives ${shares} shares now, the order asks ${minShares}`;
   tx = buildDepositOrder({
     height,
     inputs: await providerInputs("lit"),
     owner,
     poolBox,
-    amountX: L_AMOUNT,
+    amountX: L6_AMOUNT,
     amountY,
     minShares,
   });
