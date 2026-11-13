@@ -1,5 +1,5 @@
 {
- "$comment": "Every contract the page builds against, with its template SHA-256 (what the explorer's unspent search takes) and where its bytes came from. test/hashes.test.ts checks each entry's hash against its tree and recompiles the ones with a source in contracts/; scripts/registry-check.ts asks the explorer for one live box per entry and updates nothing. A placeholder {name} in a template is a segregated constant; the hash is the same for every value.",
+ "$comment": "Every contract the page builds against, with its template SHA-256 (what the explorer's unspent search takes) and where its bytes came from. test/hashes.test.ts checks each entry's hash against its tree and recompiles the ones with a source in contracts/; scripts/registry-check.ts asks the explorer for one live box per entry and updates nothing. A placeholder {name} in a template is a segregated constant; the hash is the same for every value. A parameterized entry names the constant index of each term in its sample tree; a context-var entry is bytes a spend passes in a context variable, pinned by hash.",
  "contracts": {
   "ergodex-n2t-pool": {
    "protocol": "ErgoDEX v1 (Spectrum)",
@@ -366,6 +366,201 @@
     "src/upkeep.ts"
    ],
    "liveBoxCheckedOn": "2026-10-29"
+  },
+  "lithosdex-pool": {
+   "protocol": "LithosDex",
+   "what": "the ERG/LIT liquidity pool box (pool NFT, LIT reserve, provision token supply); keyless, spent by swaps, deposits, redemptions, flushes and resizes",
+   "kind": "tree",
+   "network": "mainnet",
+   "tree": "1bbe10650400040204020404040404000402040005feffffffffffffffff0105feffffffffffffffff010500050006043b9aca00040204000e20a089b9b54b29d7fc71b096c87fce0616ae83cbd5c163ac153e2e1f9d87a8d3c50e207f45bcbf13b9925c3eef35ff247ae46b80db2e2703ce2a8bfddf294e1e60c2d704000400040004060580dac4090500050004040200050005000500050004a09c010402050004a09c0104040500020104020400050005000500050204020580989abc04050005000502050202020402040005020500050005020580897a0501020304020400040202000500040205000500040004020500050005000500050005000204040204020400040004040400040402000500040205000580897a050005000502050204020580989abc040502040004020500050005000100d831d601c5a7d602b2a5730000d603db63087202d604db6308a7d605b27203730100d606b27204730200d6078c720601d608b27203730300d609b27204730400d60a8c720901d60be4c6a70511d60cc17202d60de4c672020611d60eb2720d730500d60f99720c720ed6108c720502d611b2720d730600d6129972107211d613e4e30002d614c1a7d615e4c6a70611d616b27215730700d6179972147216d61899720f7217d61999720e7216d61a997308e4c672020405d61b997309e4c6a70405d61c99721a721bd61ddad9011d0eb0a4730ad9011f41639a8c721f01b0db63088c721f02730bd90121414d0ed802d6238c722102d6248c72210195938c722301721d9a72248c722302722401720ad61e8c720902d61f93721d721ed6208c720802d621730cd6229c9c722172217221d623e4c6a70706d624e4c672020706d625b27215730d00d6269972117225d627e4c6a70806d628e4c672020806d62999720c7214d62a8c720602d62b997210722ad62c99722a7225d62db2720b730e00d62e997212722cd62f730fd630ed93722472239372287227d6317310d1ed96830a0193c5b2a4731100720193c27202c2a793b27203731200b27204731300938c7205017207938c720801720a93b17203731493e4c672020511720b91720c7315ed91720f7316917212731793b1720d7318959372137319d804d6327e721906d6337e721b06d6347e722606d635ededededed93721c731a721f937220721e9372249a72239d9c7232722272339372289a72279d9c723472227233ec947229731b94722b731c95917218731dd801d6367e731e06ededed929c9c7e722c067e7218067e722d069c7ef0722e069a9c7e72170672367e9c7218722d069372329d9c7eb2720b731f00067e722906723693722673207235d801d6367e732106ededed929c9c7e7217067e722e067e722d069c7ef07218069a9c7e722c0672367e9c722e722d069372349d9c7eb2720b732200067e722b06723693721973237235959372137324d804d6327e721b06d633b2a5732500d634db63087233d635b27234732600968312017230721f9372197327937226732891721c7329907e721c06a19d9c7e72180672327e7217069d9c7e722e0672327e722c0693cbc27233722f938c723501720a938c723502732a93b17234732b92c17233732cefe6c67233080e93e4c672330406722393e4c672330506722793e4c67233060e720193e4c672330705721c93dad901360eb0a5732dd9013841639a8c723801b0db63088c723802732ed9013a414d0ed802d63c8c723a02d63d8c723a0195938c723c0172369a723d8c723c02723d017201732f93722099721e7330959372137331d805d632b2a4733200d633b2db63087232733300d6347e721b06d6357e721c06d6369a721e733496830b0172309372197335937226733693cbc27232722f938c723301720a938c7233027337ed929c7e72180672349c72357e721706929c7e722e0672349c72357e722c0692721a7338939c7339721ce4c67232070593721d7236937220723695937213733ad808d632b2a4733b00d633db63087232d634b27233733c00d635b2a5733d00d636db63087235d6378602830102733e733fd638b272367340017237d6398c723802968312017230721f937220721eec91721673419172257342938c723401723193b272367343007234937229f0721693722bf0722592c172359ac1723272169272399a8cb272337344017237027225ec938c7238017207937239734593e4c672350406722393e4c672350506722793720e7346937211734793721c7348937218734993722e734a95937213734bd811d632b2a5734c00d633e4c672320705d634b2a4734d00d635e4c672340705d636b2db63087234734e00d637db63087232d638b27237734f00d6397e723506d63a7e723306d63bb2a4735000d63cdb6308723bd63db2723c735100d63eb2a5735200d63fdb6308723ed640860283010273537354d641b2723f7355017240d6428c72410296831d0172309591721c7356d801d6437e721b06907e721c06a19d9c7e72180672437e7217069d9c7e722e0672437e722c06d802d6437e721b06d6447e721c06ed929c7e72180672439c72447e721706929c7e722e0672439c72447e722c0692721a735793721c997233723594721c7358917233735993cbc27234722f938c723601720a938c723602735a93cbc27232722f938c723801720a938c723802735b93b17237735c92c17232735defe6c67232080e93e4c67232060ee4c67234060e93721d9a721e735e937220721e93e4c6723204069972239d9c7239997223e4c672340406723a93e4c6723205069972279d9c7239997227e4c672340506723a938c723d01723193b2723f735f00723d92c1723e9ac1723b72169272429a8cb2723c7360017240027225ec938c7241017207937242736193e4c6723e0406722393e4c6723e0506722793720e736293721173637364",
+   "templateSha256": "2de640e37a49cc9d95a08f2678da9f5e9aba56e08dfbc0662a64d225093156e3",
+   "nft": "c0b21ac51481a5d242809d9b1e189a8baf3803fe347ca01833c1aeb380e6eb29",
+   "source": {
+    "chain": true,
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_LiquidityPool.ergo",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the tree as read from the live pool box (ErgoTree version 3); its constant 15 is blake2b256 of lithosdex-provision-guard and its constant 16 the vault NFT"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-fee-vault": {
+   "protocol": "LithosDex",
+   "what": "the fee vault singleton: flushed fees and the accumulators they paid for; pays a provision's claim",
+   "kind": "tree",
+   "network": "mainnet",
+   "tree": "1b940520040006043b9aca000400040004000200050004020402020004020402040201010500050004000e20b279187c993465c666cb17646fb87325dd7d03de6ac16dfac9c50eaea71f2fc60502040405000400058084af5f020103000200020004000e20c0b21ac51481a5d242809d9b1e189a8baf3803fe347ca01833c1aeb380e6eb29020302040100d810d601e4e30002d602e5e301047300d603e4c6a70406d604e4c6a70506d6057301d6069c9c720572057205d607b2a4730200d608b2a5db6508fe00d60993c27208c2a7d60adb63087208d60bdb6308a7d60c93b2720a730300b2720b730400d60d860283010273057306d60eb2720a730701720dd60fb2720b730801720dd6108c720e02959372017309d804d6119a7202730ad612b0dc0c1db4a4730b721101b4a5730c72118602730d8602730e730fd901123c3d593c6363d809d6148c721201d6158c721202d6168c721501d617b2db63087216731000d618e4c672160406d619e4c672160506d61a8c721502d61b8c721402d61c7ee4c672160705068602ed8c72140196830701938c7217017311938c721702731290721872039072197204ec8f721872038f7219720493e4c6721a0406720393e4c6721a0506720486029a8c721b017d9d9c721c99720372187206059a8c721b027d9d9c721c9972047219720605d613c17208d6148c721202d1eded9683050193c5a7c572077209720c90b1720a7313ec938c720e018c720f019372107314ed8c72120191720273159683050192721399c1a78c7214019272137316927210998c720f028c72140293e4c672080406720393e4c6720805067204959372017317d801d611e5dc650cfe027318731902731ad1ededed938cb2db63087207731b0001731cec937211731d937211731e7209720cd1731f",
+   "templateSha256": "29956fe5b9d86caf63ea7c63dede95091e1e4bdfa3d3641540706e829b383d9c",
+   "nft": "7f45bcbf13b9925c3eef35ff247ae46b80db2e2703ce2a8bfddf294e1e60c2d7",
+   "source": {
+    "chain": true,
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_FeeVault.ergo",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the tree as read from the live vault box (version 3); constants 17 and 28 are the provision token and the pool NFT"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-provision-guard": {
+   "protocol": "LithosDex",
+   "what": "the script every provision box carries: runs the provision logic passed in context variable 64 after checking its blake2b256",
+   "kind": "tree",
+   "network": "mainnet",
+   "tree": "1b31010e20245ef9157dbd5f538a9240da4d631863cd44a2b132afda94555063a51e12aefbea02d193cbe4e3400e7300d40840",
+   "templateSha256": "938b8ae08a1675558e8177b21524f95758ae0217ca41327492fae472c80466c9",
+   "source": {
+    "chain": true,
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_Provision_Guard.ergo",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the tree as read from live provision boxes (version 3); blake2b256 of these bytes is the pool tree's constant 15, and its one constant is blake2b256 of lithosdex-provision-logic"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-provision-logic": {
+   "protocol": "LithosDex",
+   "what": "the provision logic (LD_Provision, an expression, not a box script) that a spend of a provision box passes in context variable 64",
+   "kind": "context-var",
+   "network": "mainnet",
+   "value": "d809d601e4e30002d602e4c6a7060ed603aea4d9010363aedb63087203d901054d0e938c7205017202d604b2a5db6508fe00d605db6308a7d606e4c6a70705d607e4c6a70406d608e4c6a70506d6090e20c0b21ac51481a5d242809d9b1e189a8baf3803fe347ca01833c1aeb380e6eb29959372010200d1eded938cb2db6308b2a4040000040000010e207f45bcbf13b9925c3eef35ff247ae46b80db2e2703ce2a8bfddf294e1e60c2d772039683080193c27204c2a792c17204c1a793db63087204720593e4c67204060e720293e4c672040705720692e4c672040406720792e4c6720405067208efe6c67204080e959372010201d1eded7203938cb2db6308b2a4040000040000017209afa5d9010a63efaedb6308720ad9010c4d0e938c720c017202959372010202d1ed8f8cc7a70199a304c094409683090193c27204c2a792c17204c1a793db63087204720593e4c672040406720793e4c672040506720893e4c67204060e720293e4c6720407057206918cc772040199a304d00fefe6c67204080e959372010203d1eded7203938cb2db6308b2a40400000400000172099683050193c27204c2a792c17204c1a793db63087204720593e4c67204060e7202efe6c67204080ed10100",
+   "blake2b256": "245ef9157dbd5f538a9240da4d631863cd44a2b132afda94555063a51e12aefb",
+   "source": {
+    "chain": true,
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_Provision.ergo",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the bytes every recorded provision spend carries in context variable 64 (one value across the 23 provision inputs of the recorded set); the guard checks their blake2b256"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-order-swap-sell": {
+   "protocol": "LithosDex",
+   "what": "a standing order selling ERG into the pool for LIT; refundable by its owner; every term is one segregated constant, so one template serves every order",
+   "kind": "parameterized",
+   "network": "mainnet",
+   "sampleTree": "1ba6041a040008cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179806084c444f55030303030402040004000e205d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d010004020400040204a09c01040204000300020002ff020006084c444f560404040406084c444f53010101010402060101040005000e691005040004000e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ea02d192a39a8cc7a701730073011001020402d19683030193a38cc7b2a57300000193c2b2a57301007473027303830108cdeeac93b1a5730406084c444f5402020202d803d601b2a4730000d6027301d60373029595ed93db6508fe730391b1db630872017304938cb2db630872017305000173067307d809d604b2a5730800d605b2db63087204730900d606b2db63087201730a00d6077e8c72050206d608e4c672010611d609e4c672010511d60a7e730b06d60b9972039d9c72037eb27209730c0006720ad60c7eb27209730d0006d19683070193e5dc650cfe02730e730f027310731193c27204d07202938c7205018c7206019272077312927ec172040699997ec1a70672037313909c9c7e998c720602b2720873140006720b720c9c9a720773159a9c7e99c17201b2720873160006720a9c720b720c907eb0a57317d9010d4163d802d60f8c720d02d6108c720d019593c2720f73189a7210c1720f72100673197202",
+   "parameters": {
+    "CONST_REDEEMER": 1,
+    "CONST_BASE_AMOUNT": 2,
+    "CONST_POOL_NFT": 6,
+    "CONST_MIN_QUOTE": 18,
+    "CONST_EXECUTOR_FEE": 19,
+    "CONST_MAX_MINER_FEE": 25
+   },
+   "sampleNote": "the client's pinned tree: each term a sentinel (the generator key for the owner, 32 bytes of 0x5d for the pool NFT, 0x4c444f52… BigInts for the amounts); an order is this tree with each parameter's constant replaced",
+   "templateSha256": "b4fd5d9be2ed32a5cc516e431bf317033d1033078026bb04baf7ae355c665dfc",
+   "source": {
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_SwapSellOrder.ergo",
+    "pinned": "lithos-lib/src/main/scala/lithosdex/contracts/LDOrderContracts.scala",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the pinned tree copied from LDOrderContracts.pinnedTrees; the template matches every recorded order box of this kind (test/lithos-record.test.ts)"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-order-swap-buy": {
+   "protocol": "LithosDex",
+   "what": "a standing order selling LIT into the pool for ERG; refundable by its owner; every term is one segregated constant, so one template serves every order",
+   "kind": "parameterized",
+   "network": "mainnet",
+   "sampleTree": "1b940419040008cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980402040004000e205d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d010004000402040204a09c01040404000300020002ff020006084c444f5604040404040006084c444f5301010101060101040205000e691005040004000e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ea02d192a39a8cc7a701730073011001020402d19683030193a38cc7b2a57300000193c2b2a57301007473027303830108cdeeac93b1a5730406084c444f5402020202d802d601b2a4730000d60273019595ed93db6508fe730291b1db630872017303938cb2db630872017304000173057306d80ad603b2db6308a7730700d604b2db63087201730800d605b2a5730900d6067e99c17205c1a706d607e4c672010611d6087e8c72030206d609e4c672010511d60a7e730a06d60b9972089d9c72087eb27209730b0006720ad60c7eb27209730c0006d19683060193e5dc650cfe02730d730e02730f7310938c7203018c72040193c27205d072029272067311909c9c7e99c17201b2720773120006720b720c9c9a9a7206731373149a9c7e998c720402b2720773150006720a9c720b720c907eb0a57316d9010d4163d802d60f8c720d02d6108c720d019593c2720f73179a7210c1720f72100673187202",
+   "parameters": {
+    "CONST_REDEEMER": 1,
+    "CONST_POOL_NFT": 5,
+    "CONST_MIN_QUOTE": 17,
+    "CONST_EXECUTOR_FEE": 19,
+    "CONST_MAX_MINER_FEE": 24
+   },
+   "sampleNote": "the client's pinned tree: each term a sentinel (the generator key for the owner, 32 bytes of 0x5d for the pool NFT, 0x4c444f52… BigInts for the amounts); an order is this tree with each parameter's constant replaced",
+   "templateSha256": "7122d56978cf08f66ff5168a160e9e750002c62e79a6d985503da8ad02f11a98",
+   "source": {
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_SwapBuyOrder.ergo",
+    "pinned": "lithos-lib/src/main/scala/lithosdex/contracts/LDOrderContracts.scala",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the pinned tree copied from LDOrderContracts.pinnedTrees; the template matches every recorded order box of this kind (test/lithos-record.test.ts)"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": "2026-11-12"
+  },
+  "lithosdex-order-deposit": {
+   "protocol": "LithosDex",
+   "what": "a standing order adding ERG and LIT to the pool for a provision and its ownership NFT; refundable by its owner; every term is one segregated constant, so one template serves every order",
+   "kind": "parameterized",
+   "network": "mainnet",
+   "sampleTree": "1b8a051d040006084c444f570505050508cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980402040004000e205d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d01000400040205feffffffffffffffff010400040204020404040205000300020002ff020106084c444f5806060606040006084c444f530101010106010006010005000e691005040004000e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ea02d192a39a8cc7a701730073011001020402d19683030193a38cc7b2a57300000193c2b2a57301007473027303830108cdeeac93b1a5730406084c444f5402020202d803d601b2a4730000d6027301d60373029595ed93db6508fe730391b1db630872017304938cb2db630872017305000173067307d80ed604b2db6308a7730800d605b2db63087201730900d6068c720501d6077e99730ae4c67201040506d608e4c672010611d6097e99c17201b27208730b0006d60a9d9c720272077209d60b7e998c720502b27208730c0006d60c9d9c7e8c720402067207720bd60da1720a720cd60eb2a5730d00d60fb2a5730e00d610db6308720fd611b27210730f01860272067310d196830a0193e5dc650cfe02731173120273137314938c720401720692720d7315927ee4c6720e070506720d93c2720fd07203938cb2721073160001c57201927e9ac1720fc1720e069a99997ec1a706720273179591720a720c9d9c99720a720c720972077318938c7211017206927e8c721102069591720c720a9d9c99720c720a720b72077319907eb0a5731ad901124163d802d6148c721202d6158c7212019593c27214731b9a7215c17214721506731c7203",
+   "parameters": {
+    "CONST_DEPOSIT_X": 1,
+    "CONST_REDEEMER": 2,
+    "CONST_POOL_NFT": 6,
+    "CONST_MIN_SHARES": 21,
+    "CONST_EXECUTOR_FEE": 23,
+    "CONST_MAX_MINER_FEE": 28
+   },
+   "sampleNote": "the client's pinned tree: each term a sentinel (the generator key for the owner, 32 bytes of 0x5d for the pool NFT, 0x4c444f52… BigInts for the amounts); an order is this tree with each parameter's constant replaced",
+   "templateSha256": "28027ccf9c2a5ac3d31178e97a387aae3207ddec642b5662e63af30bbe642c17",
+   "source": {
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_DepositOrder.ergo",
+    "pinned": "lithos-lib/src/main/scala/lithosdex/contracts/LDOrderContracts.scala",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the pinned tree copied from LDOrderContracts.pinnedTrees; the template matches every recorded order box of this kind (test/lithos-record.test.ts); no unspent box of this kind on 2026-11-12, so the check was against the recorded spent boxes"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": null
+  },
+  "lithosdex-order-redeem": {
+   "protocol": "LithosDex",
+   "what": "a standing order closing the provision whose ownership NFT it holds; refundable by its owner; every term is one segregated constant, so one template serves every order",
+   "kind": "parameterized",
+   "network": "mainnet",
+   "sampleTree": "1b940418040008cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f817980404040004000e205d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d01000402040205feffffffffffffffff010402040005000300020002ff02020400040006084c444f5301010101040205000e691005040004000e36100204a00b08cd0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ea02d192a39a8cc7a701730073011001020402d19683030193a38cc7b2a57300000193c2b2a57301007473027303830108cdeeac93b1a5730406084c444f5402020202d802d601b2a4730000d60273019595ed93db6508fe730291b1db630872017303938cb2db630872017304000173057306d808d603b2a4730700d604b2a5730800d6057ee4c67203070506d606e4c672010611d6077e997309e4c67201040506d608b2db63087201730a00d6098c720801d60ab2db63087204730b0186027209730cd19683070193e5dc650cfe02730d730e02730f731093e4c67203060e8cb2db6308a77311000193c27204d07202927ec1720406999a7e9ac1a7c17203069d9c72057e99c17201b272067312000672077313938c720a017209927e8c720a02069d9c72057e998c720802b27206731400067207907eb0a57315d9010b4163d802d60d8c720b02d60e8c720b019593c2720d73169a720ec1720d720e0673177202",
+   "parameters": {
+    "CONST_REDEEMER": 1,
+    "CONST_POOL_NFT": 5,
+    "CONST_EXECUTOR_FEE": 19,
+    "CONST_MAX_MINER_FEE": 23
+   },
+   "sampleNote": "the client's pinned tree: each term a sentinel (the generator key for the owner, 32 bytes of 0x5d for the pool NFT, 0x4c444f52… BigInts for the amounts); an order is this tree with each parameter's constant replaced",
+   "templateSha256": "d67c6f6e4dfaba9b7aefce23c63add22dbc5fdd34a27946771965be943baeb04",
+   "source": {
+    "repository": "https://github.com/Lithos-Protocol/Lithos-Client",
+    "path": "lithos-lib/src/main/resources/lithosdex/LD_RedeemOrder.ergo",
+    "pinned": "lithos-lib/src/main/scala/lithosdex/contracts/LDOrderContracts.scala",
+    "commit": "14ad1fe651d62f8942c4134bec2c57a09e4425b7",
+    "note": "the pinned tree copied from LDOrderContracts.pinnedTrees; the template matches every recorded order box of this kind (test/lithos-record.test.ts); no unspent box of this kind on 2026-11-12, so the check was against the recorded spent boxes"
+   },
+   "licence": "CC0-1.0",
+   "usedBy": [
+    "src/protocols/lithos/lithos.ts"
+   ],
+   "liveBoxCheckedOn": null
   }
  }
 }
