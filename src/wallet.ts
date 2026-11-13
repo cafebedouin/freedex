@@ -20,9 +20,17 @@ export interface Signer {
   utxos(): Promise<Box<string>[]>;
   /** nanoERG for "ERG", else the token's raw amount */
   balance(tokenId: string): Promise<bigint>;
-  /** signs and submits; resolves with the transaction id */
-  sign(tx: EIP12UnsignedTransaction): Promise<string>;
+  /**
+   * signs and submits; resolves with the transaction id. `ctx.newestInput` is the newest block that holds a box the
+   * page brought (`tip.ts`, `checkInputs`): the phone path refuses to reduce against headers older than it.
+   */
+  sign(tx: EIP12UnsignedTransaction, ctx?: SignContext): Promise<string>;
   disconnect(): Promise<void>;
+}
+
+export interface SignContext {
+  /** the height of the newest block holding an input or data input the page brought (0: none confirmed) */
+  newestInput?: number;
 }
 
 /** The store's name for the connected signer. */

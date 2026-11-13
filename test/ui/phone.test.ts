@@ -84,6 +84,23 @@ describe("signing with the phone", () => {
     expect(text("log")).toContain(`submitted ${TXID}`);
   });
 
+  it("does not reduce a swap on a pool box confirmed in the explorer's newest block: two confirmations on this path", async () => {
+    w.world.settled = Object.fromEntries(
+      w.world.boxes.filter((b) => b.ergoTree !== w.me.address.ergoTree).map((b) => [b.boxId, w.world.height]),
+    );
+    await choosePhone();
+    type("swap-in", "1");
+    el<HTMLButtonElement>("swap-go").click();
+    await settle(100);
+    expect(el("ergopay").hidden).toBe(true);
+    expect(fake.calls.headers.length).toBe(0);
+    expect(text("log")).toMatch(
+      new RegExp(
+        `was confirmed in block ${w.world.height}; the explorer is at block ${w.world.height}, and the phone path waits for 2 confirmations so the phone's node has it too\\. Nothing was signed: wait 1 block \\(about 2 minutes\\)`,
+      ),
+    );
+  });
+
   it("cancel stops the wait", async () => {
     await choosePhone();
     type("swap-in", "1");

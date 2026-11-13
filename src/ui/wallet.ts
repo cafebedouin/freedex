@@ -5,6 +5,7 @@ import type { Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import type { ErgoAddress } from "@fleet-sdk/core";
 import { PHONE_STORAGE_KEY, POLL_MS, POLL_TIMEOUT_MS, parsePhoneAddress, phoneSigner } from "../ergopay";
 import type { PhoneHooks } from "../ergopay";
+import { checkInputs, explainFailure } from "../tip";
 import { availableWallets, connect } from "../wallet";
 import { $, err, log } from "./dom";
 import { drawQr } from "./qr";
@@ -13,8 +14,10 @@ import type { Store } from "./store";
 export type Builder = (height: number, inputs: Box<string>[]) => EIP12UnsignedTransaction;
 
 /**
- * Every tab's path: build from the signer's boxes at its height, then sign and submit through it. `what` is the
- * sentence the visitor sees before the wallet prompt, the amounts in words (the `#confirm` status line and the log).
+ * Every tab's path: build from the signer's boxes at its height, check the boxes the page brought itself against the
+ * explorer and the signer's height (`tip.ts`), then sign and submit through the signer. `what` is the sentence the
+ * visitor sees before the wallet prompt, the amounts in words (the `#confirm` status line and the log). A refusal by
+ * the check, or by the wallet or its node, is thrown as an Error whose message says what happened and what to do.
  */
 export async function send(store: Store, build: Builder, what?: string): Promise<string> {
   const wallet = store.wallet;
@@ -23,6 +26,11 @@ export async function send(store: Store, build: Builder, what?: string): Promise
   const inputs = await wallet.utxos();
   const tx = build(height, inputs);
   const signer = wallet.kind === "ergopay" ? "phone" : "wallet";
+  // every box the signer did not hand over came from the explorer: re-read each, refuse one spent, gone or too fresh
+  const newestInput = await checkInputs(store.explorer, tx, new Set(inputs.map((b) => b.boxId)), {
+    kind: wallet.kind,
+    height,
+  });
   const confirm = $("confirm");
   if (what) {
     confirm.textContent = `${what}. Your ${signer} will ask you to confirm.`;
@@ -30,7 +38,12 @@ export async function send(store: Store, build: Builder, what?: string): Promise
   }
   log(`built: ${tx.inputs.length} inputs, ${tx.outputs.length} outputs, height ${height}; waiting for the ${signer}`);
   try {
-    const txId = await wallet.sign(tx);
+    let txId: string;
+    try {
+      txId = await wallet.sign(tx, { newestInput });
+    } catch (e) {
+      throw new Error(explainFailure(e), { cause: e });
+    }
     log(`submitted ${txId}\n${store.explorer.txUrl(txId)}`);
     store.explorer.invalidate();
     return txId;
