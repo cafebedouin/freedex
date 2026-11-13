@@ -19,7 +19,9 @@ Every entry is a push to `main` (one Pages run each); the commit is named. Dates
   fees are pending. Checked against the 63 recorded pool transactions (`test/fixtures/lithos-pool-record.json`):
   the pool, provision and vault successors rebuild byte for byte; under 0.29 they reduce and sign, under 0.28.0 they
   fail at parse.
-- `scripts/mainnet-run.ts`: unsigned LithosDex and Machina test transactions for an address, for a separate signer.
+- `scripts/mainnet-run.ts`: unsigned LithosDex and Machina test transactions for an address, for a separate signer;
+  a liquidity provider's cycle straight against the pool (P0 to P6), the deposit and redeem orders placed and
+  cancelled (L6, L7), the `--max-loss` each needs, and the address's provisions in `status`.
 - `ergo-lib-wasm-nodejs-028` (an npm alias of 0.28.0) for the library tests' negative control.
 
 ## 2026-11-06: chaining off the mempool, and the bank's fee
