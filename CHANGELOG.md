@@ -2,7 +2,7 @@
 
 Every entry is a push to `main` (one Pages run each); the commit is named. Dates are the commit dates.
 
-## Unreleased (branch `lithos`): LithosDex, Machina's version-2 orders, ergo-lib-wasm 0.29
+## Unreleased: LithosDex (experimental), Machina's version-2 orders, ergo-lib-wasm 0.29
 
 - ergo-lib-wasm 0.29.0 from sigma-rust `688511df` for both bindings, vendored in
   `vendor/ergo-lib-wasm-0.29.0-688511df/` until the npm release (0.28.0 cannot parse ErgoTree version 2 or 3). No
