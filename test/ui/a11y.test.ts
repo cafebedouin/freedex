@@ -6,7 +6,7 @@ import { fakeErgoLib } from "../fake-ergolib";
 import { makeWorld } from "./fixtures";
 import { connect, el, installFetch, installWallet, loadPage, noWallet, settle, tab, type } from "./harness";
 
-const TABS = ["swap", "orders", "pool", "bank", "bonds", "escrow", "programs", "options"] as const;
+const TABS = ["swap", "orders", "pool", "bank", "bonds", "escrow", "programs", "options", "lithos"] as const;
 
 async function violations(): Promise<string[]> {
   const r = await axe.run(document, {

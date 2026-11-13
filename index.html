@@ -60,6 +60,7 @@
     <button role="tab" id="tab-btn-escrow" data-tab="escrow" aria-selected="false" aria-controls="tab-escrow">Escrow</button>
     <button role="tab" id="tab-btn-programs" data-tab="programs" aria-selected="false" aria-controls="tab-programs">Programs</button>
     <button role="tab" id="tab-btn-options" data-tab="options" aria-selected="false" aria-controls="tab-options">Options</button>
+    <button role="tab" id="tab-btn-lithos" data-tab="lithos" aria-selected="false" aria-controls="tab-lithos">LithosDex</button>
   </nav>
   <p id="confirm" class="small" role="status" aria-live="polite"></p>
 
@@ -254,6 +255,40 @@
       <input id="opt-premium" inputmode="decimal" value="0.001" required />
       <dl id="opt-quote" style="grid-column: 1 / -1"></dl>
       <button type="submit" id="opt-go" disabled>Build, sign in wallet, submit</button>
+    </form>
+  </section>
+
+  <section id="tab-lithos" role="tabpanel" aria-labelledby="tab-btn-lithos" hidden>
+    <p class="muted small">The ERG/LIT pool of the Lithos protocol. Trades and deposits go through an order box: you lock the amounts and an executor fee (0.003 ERG, what the Lithos client's executors accept) in an order, and an executor fills it against the pool at no worse than the minimum you set, or you cancel it and take everything back. Liquidity providers hold a provision, owned by whoever holds its NFT, and claim its share of the fees from the vault. <b>Which wallet can sign what:</b> placing an order spends only your own boxes, so any wallet signs it. Cancelling an order and claiming fees spend LithosDex boxes, whose scripts are ErgoTree version 3: that needs a wallet whose signing library reads version 3 (sigma-rust 0.29 or later). Nautilus 1.4 cannot sign them. On the phone path the page reduces them itself with such a library; the Ergo mobile wallet then signs a cancel but cannot show a claim.</p>
+    <h2>The pool</h2>
+    <div id="lithos-pool-state" class="muted small">loading…</div>
+    <dl id="lithos-pool"></dl>
+    <h2 style="margin-top:1.25rem">Your orders</h2>
+    <div id="lithos-orders">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Your provisions</h2>
+    <div id="lithos-provisions">connect a wallet</div>
+    <h2 style="margin-top:1.25rem">Swap order</h2>
+    <form id="ld-swap" class="grid">
+      <label for="ld-direction">You</label>
+      <select id="ld-direction">
+        <option value="erg-to-lit">sell ERG for LIT</option>
+        <option value="lit-to-erg">sell LIT for ERG</option>
+      </select>
+      <label for="ld-amount">Amount sold</label>
+      <input id="ld-amount" inputmode="decimal" required />
+      <label for="ld-slippage">Slippage (%)</label>
+      <input id="ld-slippage" inputmode="decimal" value="1" />
+      <span></span><span id="ld-quote" class="muted small" role="status"></span>
+      <button type="submit">Build, sign in wallet, submit</button>
+    </form>
+    <h2 style="margin-top:1.25rem">Deposit order</h2>
+    <form id="ld-deposit" class="grid">
+      <label for="ld-dep-erg">ERG deposited</label>
+      <input id="ld-dep-erg" inputmode="decimal" required />
+      <label for="ld-dep-slippage">Slippage (%)</label>
+      <input id="ld-dep-slippage" inputmode="decimal" value="1" />
+      <span></span><span id="ld-dep-quote" class="muted small" role="status"></span>
+      <button type="submit">Build, sign in wallet, submit</button>
     </form>
   </section>
 
