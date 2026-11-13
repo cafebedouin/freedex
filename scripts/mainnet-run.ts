@@ -2,7 +2,7 @@
 // confirmed boxes and live chain state, in the node JSON shape a separate signer takes (inputs as {boxId,
 // spendingProof: {proofBytes: "", extension}}). Nothing here signs or submits, and nothing reads a key.
 //
-//   node scripts/mainnet-run.ts <address> <step> [--out <dir>]      (default dir: ./mainnet-unsigned)
+//   node scripts/mainnet-run.ts <address> <step> [--out <dir>] [--node <url>]   (default dir: ./mainnet-unsigned)
 //   node scripts/mainnet-run.ts <address> status                    what the address has open, and the candidates
 //
 // Steps (each reads the chain for what the previous one left, so rerun after each is mined):
@@ -10,7 +10,8 @@
 //   L2  cancel the L1 order (the address's open ERG-to-LIT order whose minimum the pool cannot meet)
 //   L3  LithosDex swap order, 0.001 ERG for LIT at the pool's quote less 1%: for the executor to fill
 //   L3c cancel an L3 order the executor has not filled (any open ERG-to-LIT order of the address)
-//   L4  LithosDex swap order selling all the address's LIT for ERG, its minimum twice the quote: held open
+//   L4  LithosDex swap order selling the address's LIT for ERG, its minimum twice the quote: held open (boxes holding
+//       a provision's ownership NFT are left alone, so the NFT stays where it is; their LIT is not sold)
 //   L5  cancel the L4 order
 //   M1  Machina version-2 limit order selling 10 FAKU units at 0.001 ERG per unit (thirty times the pool)
 //   M2  close the M1 order as its owner
@@ -32,7 +33,11 @@
 //       0.001 ERG, so it stays open; anyone else may still execute it, and the proceeds would go to the address)
 //   L7c cancel the L7 order (the NFT comes back)
 // Set EXCLUDE=<boxId or prefix>[,...] to keep boxes a pending transaction spends out of the selection, or pass
-// --use <boxId or prefix>[,...] to spend only those boxes (the provider steps also skip boxes holding other tokens).
+// --use <boxId or prefix>[,...] to spend only those boxes (without --use the provider steps skip boxes holding other
+// tokens; with it they take the named boxes as they are, so a provision NFT beside other tokens can be spent).
+// --node <url>: before writing, ask that node for every input and data input (GET /utxo/byId/<id>, then
+// /utxo/withPool/byId/<id> on a 404) and refuse to write when one is not visible there: the node the transaction will be
+// submitted to may be a block behind the explorer the boxes came from.
 //
 // For each step it prints the builder call, what is locked, the miner fee, what comes back, the scripts a guarded
 // signer must allow as outputs (--allow-tree) and sign with the address's key (--sign-tree), and the reduction of
@@ -86,6 +91,8 @@ import {
   capacity,
   describe as describeMachina,
 } from "../src/protocols/machina/orders.ts";
+
+import { heldIn, nodeVisibility, providerFilter, visibilityReport, withoutTokens } from "./mainnet-run-lib.ts";
 
 const require = createRequire(import.meta.url);
 const lib = require("ergo-lib-wasm-nodejs") as ErgoLibModule;
@@ -167,7 +174,7 @@ async function myProvisions(): Promise<Box<bigint>[]> {
 async function providerInputs(tokens: "none" | "lit" | "lit+nft") {
   const ok = new Set<string>(tokens === "none" ? [] : [LIT]);
   if (tokens === "lit+nft") for (const b of await myProvisions()) ok.add(describeProvision(b).ownerNft);
-  return inputs.filter((b) => b.assets.every((a) => ok.has(a.tokenId)));
+  return providerFilter(inputs, ok, use);
 }
 async function oneProvision() {
   const mine = await myProvisions();
@@ -263,13 +270,22 @@ if (step === "L1" || step === "L3") {
   tx = buildSwapOrder({ height, inputs, owner, poolBox, direction: "erg-to-lit", amountIn: L_AMOUNT, minOut });
 } else if (step === "L4") {
   const { box: poolBox, v: p } = await poolNow();
-  const amountIn = held(LIT);
-  if (amountIn === 0n) throw new Error("the address holds no LIT: L3 has not been filled");
+  // a box holding a provision's ownership NFT stays out: Fleet would merge the NFT into the change with other tokens
+  const nfts = new Set((await myProvisions()).map((b) => describeProvision(b).ownerNft));
+  const own = withoutTokens(inputs, nfts);
+  const amountIn = heldIn(own, LIT);
+  const withNft = held(LIT) - amountIn;
+  if (amountIn === 0n)
+    throw new Error(
+      withNft > 0n
+        ? `the address's LIT (${withNft} units) sits only in boxes holding a provision NFT, which L4 leaves alone`
+        : "the address holds no LIT: L3 has not been filled",
+    );
   const q = quoteSwap(p, false, amountIn) - DEFAULT_EXECUTOR_FEE;
   const minOut = q > 0n ? 2n * q : 1_000_000n;
   call = `buildSwapOrder({ direction: "lit-to-erg", amountIn: ${amountIn}n, minOut: ${minOut}n })`;
-  note = `held open: the pool pays ${q} nanoERG net now, the order asks ${minOut}`;
-  tx = buildSwapOrder({ height, inputs, owner, poolBox, direction: "lit-to-erg", amountIn, minOut });
+  note = `held open: the pool pays ${q} nanoERG net now, the order asks ${minOut}${withNft > 0n ? `; ${withNft} LIT units stay in the box${nfts.size === 1 ? "" : "es"} holding the provision NFT${nfts.size === 1 ? "" : "s"}, not spent` : ""}`;
+  tx = buildSwapOrder({ height, inputs: own, owner, poolBox, direction: "lit-to-erg", amountIn, minOut });
 } else if (step === "L2" || step === "L5" || step === "L3c") {
   const candidates =
     step === "L2"
@@ -476,6 +492,17 @@ const forSigner = {
     additionalRegisters: o.additionalRegisters,
   })),
 };
+// the node the caller will submit to may be behind the explorer the boxes came from: ask it before writing anything
+const node = opt("node");
+if (node) {
+  const ids = [...new Set([...tx.inputs, ...tx.dataInputs].map((b) => b.boxId))];
+  const { lines, refuse } = visibilityReport(node, await nodeVisibility(node, ids));
+  for (const l of lines) console.log(l);
+  if (refuse) {
+    console.error(refuse);
+    process.exit(2);
+  }
+}
 const dir = opt("out") ?? "mainnet-unsigned";
 mkdirSync(dir, { recursive: true });
 const file = `${dir}/${step}-${new Date().toISOString().replace(/[:.]/g, "").slice(0, 15)}.json`;
