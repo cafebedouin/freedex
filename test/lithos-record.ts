@@ -4,16 +4,24 @@
 import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoAddress, ErgoBox } from "@fleet-sdk/core";
 import {
+  POOL_TREE,
   buildClaim,
+  buildDeposit,
   buildDepositOrder,
+  buildFlush,
+  buildRedeem,
   buildRedeemOrder,
+  buildResize,
+  buildSwap,
   buildSwapOrder,
   describeOrder,
+  describeProvision,
 } from "../src/protocols/lithos/lithos.ts";
 import { hex } from "@fleet-sdk/crypto";
 import type * as Lib29 from "ergo-lib-wasm-nodejs";
 import { parseExact } from "../src/explorer.ts";
 import recordText from "./fixtures/lithos-record.json?raw";
+import poolRecordText from "./fixtures/lithos-pool-record.json?raw";
 
 export type Lib = typeof Lib29;
 
@@ -210,6 +218,150 @@ export function rebuildPlacement(o: RecordedOrder, inputs: Box<Amount>[] = o.pla
     case "redeem":
       return buildRedeemOrder({ ...common, provisionBox: o.provisionBox! });
   }
+}
+
+// ---- the recorded pool transactions (test/fixtures/lithos-pool-record.json, scripts/lithos-pool-fixtures.ts) ----
+
+export type PoolKind = "swap" | "deposit" | "redeem" | "flush" | "resize";
+export interface RecordedPoolTx {
+  txId: string;
+  inclusionHeight: number;
+  kind: PoolKind;
+  /** every input but the pool (and, on a redeem, a resize or a flush, the provision and vault) is a P2PK box */
+  direct: boolean;
+  tx: { inputs: { boxId: string; extension: Record<string, string> }[]; outputs: NodeBox[] };
+  inputBoxes: NodeBox[];
+}
+const POOL_KINDS: Record<string, PoolKind> = {
+  "0200": "swap",
+  "0201": "deposit",
+  "0202": "redeem",
+  "0203": "flush",
+  "0204": "resize",
+};
+
+/** Puts the pool tree back where the fixture abbreviated it, and refuses any box whose id is not its bytes' hash. */
+function restore(b: NodeBox): NodeBox {
+  const box = { ...b, ergoTree: b.ergoTree === "POOL_TREE" ? POOL_TREE : b.ergoTree };
+  const id = new ErgoBox(
+    {
+      value: BigInt(box.value),
+      ergoTree: box.ergoTree,
+      creationHeight: box.creationHeight,
+      assets: box.assets.map((a) => ({ tokenId: a.tokenId, amount: BigInt(a.amount) })),
+      additionalRegisters: box.additionalRegisters,
+    },
+    box.transactionId,
+    box.index,
+  ).boxId;
+  if (id !== box.boxId) throw new Error(`pool record: box ${box.boxId} does not hash to its id`);
+  return box;
+}
+
+const poolRaw = parseExact(poolRecordText) as unknown as {
+  headers: Record<string, Headers>;
+  txs: Omit<RecordedPoolTx, "kind" | "direct">[];
+};
+export const POOL_RECORD = {
+  headers: poolRaw.headers,
+  txs: poolRaw.txs.map((t): RecordedPoolTx => {
+    const inputBoxes = t.inputBoxes.map(restore);
+    const kind = POOL_KINDS[t.tx.inputs[0].extension["0"]];
+    if (!kind) throw new Error(`pool record: ${t.txId} has no pool operation`);
+    const fixed = { swap: 1, deposit: 1, redeem: 2, flush: 2, resize: 3 }[kind];
+    return {
+      ...t,
+      kind,
+      direct: inputBoxes.slice(fixed).every((b) => b.ergoTree.startsWith("0008cd")),
+      tx: { inputs: t.tx.inputs, outputs: t.tx.outputs.map(restore) },
+      inputBoxes,
+    };
+  }),
+};
+export const poolOf = (kind: PoolKind) => POOL_RECORD.txs.filter((t) => t.kind === kind);
+
+/** The funding of a rebuilt pool transaction: the recorded wallet boxes, or the order box re-homed at `owner`. */
+function fundingOf(t: RecordedPoolTx, fixed: number, synthetic?: ErgoAddress) {
+  const rest = t.inputBoxes.slice(fixed);
+  if (!synthetic && t.direct)
+    return { inputs: rest as Box<Amount>[], owner: ErgoAddress.fromErgoTree(rest[0].ergoTree) };
+  const owner = synthetic;
+  if (!owner) throw new Error(`${t.txId} was not made by a wallet: pass a synthetic owner`);
+  return { inputs: rest.map((b) => rehome(b, owner.ergoTree)), owner };
+}
+
+/** A recorded box's height: the builders stamp every output with the height they are given, as the client did. */
+const heightOf = (t: RecordedPoolTx) => t.tx.outputs[0].creationHeight;
+
+/**
+ * The builder call that makes `t` again. A wallet-made transaction is rebuilt from its own wallet boxes; an executed
+ * order (or a flush with no wallet input) only with `synthetic`, which re-homes the remaining inputs at that owner's
+ * script so they can fund it. Amounts come from what the recorded outputs show: the shares a deposit opened, the
+ * size a resize set, the amount a swap put in.
+ */
+export function rebuildPoolTx(t: RecordedPoolTx, synthetic?: ErgoAddress): EIP12UnsignedTransaction {
+  const [pool, second, third] = t.inputBoxes;
+  const out = t.tx.outputs;
+  const height = heightOf(t);
+  switch (t.kind) {
+    case "swap": {
+      const ergIn = BigInt(out[0].value) > BigInt(pool.value);
+      const amountIn = ergIn
+        ? BigInt(out[0].value) - BigInt(pool.value)
+        : BigInt(out[0].assets[1].amount) - BigInt(pool.assets[1].amount);
+      const direction = ergIn ? "erg-to-lit" : "lit-to-erg";
+      return buildSwap({ height, poolBox: pool, direction, amountIn, minOut: 1n, ...fundingOf(t, 1, synthetic) });
+    }
+    case "deposit":
+      return buildDeposit({
+        height,
+        poolBox: pool,
+        shares: describeProvision(out[1]).shares,
+        ...fundingOf(t, 1, synthetic),
+      });
+    case "redeem":
+      return buildRedeem({ height, poolBox: pool, provisionBox: second, ...fundingOf(t, 2, synthetic) });
+    case "flush": {
+      const f = t.inputBoxes.length > 2 ? fundingOf(t, 2, synthetic) : undefined;
+      const owner = f?.owner ?? synthetic;
+      if (!owner) throw new Error(`${t.txId} spends no wallet box: pass a synthetic payer`);
+      const inputs = f?.inputs ?? [syntheticFunding(owner, t)];
+      return buildFlush({ height, poolBox: pool, vaultBox: second, inputs, owner });
+    }
+    case "resize":
+      return buildResize({
+        height,
+        poolBox: pool,
+        provisionBox: second,
+        vaultBox: third,
+        newShares: describeProvision(out[1]).shares,
+        ...fundingOf(t, 3, synthetic),
+      });
+  }
+}
+
+/** A 0.01 ERG box at `owner`, standing in for a fee payer the record does not have (never submitted anywhere). */
+export function syntheticFunding(owner: ErgoAddress, t: RecordedPoolTx): Box<bigint> {
+  const b = new ErgoBox(
+    { value: 10_000_000n, ergoTree: owner.ergoTree, creationHeight: heightOf(t), assets: [], additionalRegisters: {} },
+    t.txId,
+    0,
+  );
+  return {
+    boxId: b.boxId,
+    transactionId: b.transactionId,
+    index: b.index,
+    value: b.value,
+    ergoTree: b.ergoTree,
+    creationHeight: b.creationHeight,
+    assets: [],
+    additionalRegisters: {},
+  };
+}
+
+/** A copy of a box at another script and creation height, its id recomputed (synthetic: never submitted anywhere). */
+export function rehomeAt(box: Box<Amount>, ergoTree: string, creationHeight: number): Box<bigint> {
+  return rehome({ ...box, creationHeight }, ergoTree);
 }
 
 /** The claim that `c` made, rebuilt from its inputs: vault, provisions (count from the vault's variable 1), wallet. */

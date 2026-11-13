@@ -4,10 +4,22 @@
 // input under it (ergo-lib-wasm 0.29; 0.28.0 cannot). Placing an order spends only the wallet's own boxes, so any
 // wallet can sign it; a cancel spends the order box and a claim spends the vault and provision boxes.
 //
+// The pool, the vault and the provision guard hold no key: the pool accepts any transaction that satisfies its
+// arithmetic, so a wallet can also swap, deposit, redeem, flush and resize against it directly, in one transaction
+// each, without an order or an executor fee (the official client's LithosDexTransactions builds the same seven).
+// Who may do what is the provision logic's call: claim, redeem and resize need the provision's ownership NFT among
+// the inputs; a flush and a refresh need nothing but the fee.
+//
 //   place order  IN  wallet...                          OUT order, [change], fee
 //   cancel       IN  order, [wallet...]                 OUT the owner's change (order value and tokens less the fee), fee
 //   claim        IN  vault, provision 1..n, wallet...   OUT vault, provision 1..n, [change: the fees owed], fee
 //                (one wallet input holds each provision's ownership NFT)
+//   swap         IN  pool, wallet...                    OUT pool, fee, change (what the pool pays)
+//   deposit      IN  pool, wallet...                    OUT pool, provision, ownership NFT (minted), fee, [change]
+//   redeem       IN  pool, provision, NFT box, wallet.. OUT pool, payout, fee, [change]         (NFT burned)
+//   flush        IN  pool, vault, wallet...             OUT pool, vault, fee, [change]
+//   resize       IN  pool, provision, vault, NFT box..  OUT pool, provision, vault, fee, [change]
+//   refresh      IN  provision, wallet...               OUT provision (young again), fee, [change]
 import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import {
   ErgoAddress,
@@ -18,7 +30,7 @@ import {
   TransactionBuilder,
 } from "@fleet-sdk/core";
 import { blake2b256, hex, sha256 } from "@fleet-sdk/crypto";
-import { SBigInt, SByte, SColl, SConstant, SGroupElement, SInt, SSigmaProp } from "@fleet-sdk/serializer";
+import { SBigInt, SByte, SColl, SConstant, SGroupElement, SInt, SLong, SSigmaProp } from "@fleet-sdk/serializer";
 import { contract, treeOf } from "../../registry.ts";
 import { FEE } from "../machina/orders.ts";
 
@@ -55,6 +67,14 @@ export const VAULT_MIN = 100_000_000n;
 export const SCALE = 10n ** 27n;
 /** LD_LiquidityPool CONST_MIN_RENT: the pool box holds strictly more. */
 export const POOL_MIN_VALUE = 10_000_000n;
+/** LD_LiquidityPool CONST_MIN_SUPPLY: no redemption or shrink takes the supply below this. */
+export const MIN_SUPPLY = 1_000_000n;
+/** LD_Provision CONST_REFRESH_AGE: anyone may refresh a provision box created more than this many blocks ago. */
+export const REFRESH_AGE = 525_600;
+/** LD_Provision CONST_HEIGHT_SLACK: a refreshed box's creation height must be above HEIGHT less this. */
+export const HEIGHT_SLACK = 1_000;
+/** LithosDexTransactions.OWNER_BOX_VALUE: the box a direct deposit mints the ownership NFT into. */
+export const OWNER_BOX_VALUE = 1_000_000n;
 
 /** Pool operations (context variable 0 of the pool input). */
 export const POOL_OP = { swap: 0, deposit: 1, redeem: 2, flush: 3, resize: 4 } as const;
@@ -628,6 +648,442 @@ export function buildClaim(p: ClaimParams): EIP12UnsignedTransaction {
     if (tx.inputs[i].boxId !== id) throw new Error("claim inputs out of order");
   });
   return tx;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Direct pool operations: no order, no executor. Each builder below states the contract path it takes.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type RefusalCode =
+  | "amount" // a non-positive or out-of-range amount
+  | "pool-moved" // the pool pays less than the minimum asked
+  | "no-provision-tokens" // the pool has no provision token to hand out
+  | "min-supply" // the supply would fall below MIN_SUPPLY
+  | "same-size" // a resize that changes nothing
+  | "zero-size" // a resize to nothing (that is a redemption)
+  | "no-owner-nft" // no wallet box holds the provision's ownership NFT
+  | "nothing-pending" // a flush with no fees to move
+  | "not-old-enough" // a refresh of a provision box younger than REFRESH_AGE
+  | "provision-value" // a provision box under PROVISION_MIN (never built by the pool)
+  | "order"; // Fleet put the fixed inputs elsewhere than the contracts read them
+
+/** A refusal by one of the direct builders: `code` says which rule, the message says what to do about it. */
+export class LithosRefusal extends Error {
+  readonly code: RefusalCode;
+  constructor(code: RefusalCode, message: string) {
+    super(message);
+    this.name = "LithosRefusal";
+    this.code = code;
+  }
+}
+
+const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
+
+interface PoolNext {
+  reservesX: bigint;
+  reservesY: bigint;
+  pendingX: bigint;
+  pendingY: bigint;
+  supply: bigint;
+  provisionTokens: bigint;
+  accX: bigint;
+  accY: bigint;
+}
+
+/** The pool's successor: value and LIT are reserves plus pending; R5 copied; an unchanged accumulator copied as is. */
+function poolSuccessor(box: Box<Amount>, p: PoolView, n: PoolNext): OutputBuilder {
+  const r = box.additionalRegisters;
+  return new OutputBuilder(n.reservesX + n.pendingX, POOL_TREE)
+    .addTokens([
+      { tokenId: POOL_NFT, amount: 1n },
+      { tokenId: LIT, amount: n.reservesY + n.pendingY },
+      { tokenId: PROVISION_TOKEN, amount: n.provisionTokens },
+    ])
+    .setAdditionalRegisters({
+      R4: SLong(LOCKED_LP - n.supply).toHex(),
+      R5: r.R5!,
+      R6: SColl(SLong, [n.pendingX, n.pendingY]).toHex(),
+      R7: n.accX === p.accX ? r.R7! : SBigInt(n.accX).toHex(),
+      R8: n.accY === p.accY ? r.R8! : SBigInt(n.accY).toHex(),
+    });
+}
+
+const unchangedPool = (p: PoolView): PoolNext => ({
+  reservesX: p.reservesX,
+  reservesY: p.reservesY,
+  pendingX: p.pendingX,
+  pendingY: p.pendingY,
+  supply: p.supply,
+  provisionTokens: p.provisionTokensLeft,
+  accX: p.accX,
+  accY: p.accY,
+});
+
+/**
+ * The vault's successor on a flush (alone or inside a resize): every pending fee arrives, and the accumulators
+ * become the pool's (LD_LiquidityPool op 3 and op 4: `vaultOut.R4 == accX`, value and LIT at least the old plus
+ * pending, the LIT entry LIT or absent).
+ */
+function vaultFlushed(v: VaultView, poolBox: Box<Amount>, p: PoolView): OutputBuilder {
+  const lit = v.lit + p.pendingY;
+  const tokens = [{ tokenId: VAULT_NFT, amount: 1n }];
+  if (lit > 0n) tokens.push({ tokenId: LIT, amount: lit });
+  return new OutputBuilder(v.value + p.pendingX, VAULT_TREE)
+    .addTokens(tokens)
+    .setAdditionalRegisters({ R4: poolBox.additionalRegisters.R7!, R5: poolBox.additionalRegisters.R8! });
+}
+
+const poolIn = (box: Box<Amount>, op: number) => new ErgoUnsignedInput(box).setContextExtension({ 0: SByte(op) });
+const provisionIn = (box: Box<Amount>, op: number) =>
+  new ErgoUnsignedInput(box).setContextExtension({
+    0: SByte(op),
+    [PROVISION_LOGIC_VAR]: SColl(SByte, hex.decode(PROVISION_LOGIC)),
+  });
+const vaultFlushIn = (box: Box<Amount>) => new ErgoUnsignedInput(box).setContextExtension({ 0: SByte(VAULT_OP.flush) });
+
+function nftHolder(inputs: Box<Amount>[], pv: ProvisionView): Box<Amount> {
+  const holder = inputs.find((b) => b.assets.some((a) => a.tokenId === pv.ownerNft));
+  if (!holder)
+    throw new LithosRefusal("no-owner-nft", `no wallet box holds the ownership NFT ${pv.ownerNft.slice(0, 8)}…`);
+  return holder;
+}
+
+/** Builds, then checks the contracts' fixed positions held (Fleet could only move them by reordering the inputs). */
+function buildFixed(
+  height: number,
+  fixed: (ErgoUnsignedInput | Box<Amount>)[],
+  rest: Box<Amount>[],
+  outputs: OutputBuilder[],
+  change: ErgoAddress,
+  burn?: { tokenId: string; amount: bigint },
+): EIP12UnsignedTransaction {
+  const ids = fixed.map((i) => i.boxId);
+  const b = new TransactionBuilder(height)
+    .from(fixed as unknown as Box<Amount>[], { ensureInclusion: true })
+    .from(rest.filter((r) => !ids.includes(r.boxId)))
+    .to(outputs)
+    .sendChangeTo(change)
+    .payFee(FEE);
+  if (burn) b.burnTokens(burn);
+  const tx = b.build().toEIP12Object();
+  ids.forEach((id, i) => {
+    if (tx.inputs[i].boxId !== id) throw new LithosRefusal("order", "the pool's fixed inputs moved");
+  });
+  return tx;
+}
+
+export interface DirectSwapParams {
+  height: number;
+  /** the wallet's boxes; Fleet selects what it needs */
+  inputs: Box<Amount>[];
+  owner: ErgoAddress;
+  poolBox: Box<Amount>;
+  direction: SwapDirection;
+  /** nanoERG (erg-to-lit) or LIT units (lit-to-erg) paid into the pool, its side fee included */
+  amountIn: bigint;
+  /** fewest LIT units or nanoERG back; the builder refuses if the pool as read pays less */
+  minOut: bigint;
+}
+
+/**
+ * A swap straight against the pool (LD_LiquidityPool op 0), no order and no executor fee. The whole input enters the
+ * box; the side fee (`amountIn * fee / 10000`, truncated) goes to pending and, divided by the supply, onto the
+ * accumulator (`fee * 1e27 / supply`, truncated); the rest trades on the curve and the builder takes `quoteSwap`, the
+ * most the AMM inequality admits. What the pool pays lands in the change. A pool box spent by anyone else first makes
+ * the transaction invalid (rebuild against the new box); it never trades at a worse price than built.
+ */
+export function buildSwap(p: DirectSwapParams): EIP12UnsignedTransaction {
+  const pool = describePool(p.poolBox);
+  if (p.amountIn <= 0n) throw new LithosRefusal("amount", "amountIn must be positive");
+  if (p.minOut <= 0n) throw new LithosRefusal("amount", "minOut must be positive");
+  const ergIn = p.direction === "erg-to-lit";
+  const fee = (p.amountIn * (ergIn ? pool.ergFee : pool.tokenFee)) / FEE_DENOM;
+  const out = quoteSwap(pool, ergIn, p.amountIn);
+  if (out < p.minOut)
+    throw new LithosRefusal("pool-moved", `the pool pays ${out} now, below the ${p.minOut} asked: rebuild or lower it`);
+  const advance = (fee * SCALE) / pool.supply;
+  const next = unchangedPool(pool);
+  if (ergIn) {
+    next.reservesX += p.amountIn - fee;
+    next.pendingX += fee;
+    next.accX += advance;
+    next.reservesY -= out;
+  } else {
+    next.reservesY += p.amountIn - fee;
+    next.pendingY += fee;
+    next.accY += advance;
+    next.reservesX -= out;
+  }
+  if (next.reservesX <= 0n || next.reservesY <= 0n || next.reservesX + next.pendingX <= POOL_MIN_VALUE)
+    throw new LithosRefusal("amount", "the pool cannot pay that much");
+  return buildFixed(
+    p.height,
+    [poolIn(p.poolBox, POOL_OP.swap)],
+    p.inputs,
+    [poolSuccessor(p.poolBox, pool, next)],
+    p.owner,
+  );
+}
+
+/** The cheapest deposit for `shares` (LDLiquidityPool.simDepositForShares): both sides rounded up. */
+export function depositCost(p: PoolView, shares: bigint): { x: bigint; y: bigint } {
+  return { x: ceilDiv(shares * p.reservesX, p.supply), y: ceilDiv(shares * p.reservesY, p.supply) };
+}
+
+export interface DirectDepositParams {
+  height: number;
+  inputs: Box<Amount>[];
+  owner: ErgoAddress;
+  poolBox: Box<Amount>;
+  /** LP shares to open; the cheapest ERG and LIT for them are taken (depositCost) */
+  shares: bigint;
+}
+
+/**
+ * Opens a provision straight against the pool (LD_LiquidityPool op 1). Outputs: the pool with `depositCost` added and
+ * one provision token fewer; the provision box (PROVISION_MIN, one provision token, R4/R5 the pool's accumulators,
+ * R6 the pool box's id, R7 the shares); the ownership NFT, minted from the pool box's id (the pool is input 0, which
+ * is what makes the id unmintable anywhere else), in a box of OWNER_BOX_VALUE to the owner with the official client's
+ * EIP-4 registers. The wallet pays the two sides, PROVISION_MIN, OWNER_BOX_VALUE (it comes back with the NFT) and the
+ * fee. The provision enters at the pool's accumulators, so it is owed nothing until a swap after it is flushed.
+ */
+export function buildDeposit(p: DirectDepositParams): EIP12UnsignedTransaction {
+  const pool = describePool(p.poolBox);
+  if (p.shares <= 0n) throw new LithosRefusal("amount", "a deposit opens at least one share");
+  if (pool.provisionTokensLeft <= 1n)
+    throw new LithosRefusal("no-provision-tokens", "the pool has no provision tokens left to hand out");
+  const { x, y } = depositCost(pool, p.shares);
+  const next = unchangedPool(pool);
+  next.reservesX += x;
+  next.reservesY += y;
+  next.supply += p.shares;
+  next.provisionTokens -= 1n;
+  const nft = p.poolBox.boxId;
+  const r = p.poolBox.additionalRegisters;
+  const provision = new OutputBuilder(PROVISION_MIN, PROVISION_GUARD_TREE)
+    .addTokens({ tokenId: PROVISION_TOKEN, amount: 1n })
+    .setAdditionalRegisters({
+      R4: r.R7!,
+      R5: r.R8!,
+      R6: SColl(SByte, hex.decode(nft)).toHex(),
+      R7: SLong(p.shares).toHex(),
+    });
+  // LithosDexTransactions.provisionNftDescription: the provision as it opened, for a wallet to show
+  const description =
+    `{"type":"LithosDex Provision","pool":"${POOL_NFT}","tokenY":"${LIT}","provisionToken":"${PROVISION_TOKEN}",` +
+    `"R4_entryX":"${pool.accX}","R5_entryY":"${pool.accY}","R6_ownerNFT":"${nft}","R7_shares":${p.shares},` +
+    `"depositedX":${x},"depositedY":${y},"height":${p.height}}`;
+  const owner = new OutputBuilder(OWNER_BOX_VALUE, p.owner).mintToken({
+    amount: 1n,
+    name: `LD-NFT-${nft.slice(0, 6)}`,
+    description,
+    decimals: 0,
+  });
+  const tx = buildFixed(
+    p.height,
+    [poolIn(p.poolBox, POOL_OP.deposit)],
+    p.inputs,
+    [poolSuccessor(p.poolBox, pool, next), provision, owner],
+    p.owner,
+  );
+  if (tx.outputs[2].assets[0]?.tokenId !== nft)
+    throw new LithosRefusal("order", "the NFT was not minted from the pool");
+  return tx;
+}
+
+export interface DirectRedeemParams {
+  height: number;
+  /** the owner's boxes: one must hold the provision's ownership NFT */
+  inputs: Box<Amount>[];
+  owner: ErgoAddress;
+  poolBox: Box<Amount>;
+  provisionBox: Box<Amount>;
+}
+
+/**
+ * Closes a provision straight against the pool (LD_LiquidityPool op 2, LD_Provision op 1): the pool at input 0, the
+ * provision at 1, the NFT's box after. The pool releases `shares * reserves / supply` of each side, floored (the most
+ * its rule admits) and takes the provision token home; the payout (output 1, which the provision logic reads as its
+ * successor slot) carries that ERG plus the provision box's value, and the LIT; the NFT is burned. Unclaimed fees stay
+ * in the vault for good, so claim first.
+ */
+export function buildRedeem(p: DirectRedeemParams): EIP12UnsignedTransaction {
+  const pool = describePool(p.poolBox);
+  const pv = describeProvision(p.provisionBox);
+  if (pool.supply - pv.shares < MIN_SUPPLY)
+    throw new LithosRefusal("min-supply", `closing ${pv.shares} shares would take the supply under ${MIN_SUPPLY}`);
+  const holder = nftHolder(p.inputs, pv);
+  const { x, y } = redeemShare(pool, pv.shares);
+  const next = unchangedPool(pool);
+  next.reservesX -= x;
+  next.reservesY -= y;
+  next.supply -= pv.shares;
+  next.provisionTokens += 1n;
+  const payout = new OutputBuilder(x + pv.value, p.owner);
+  if (y > 0n) payout.addTokens({ tokenId: LIT, amount: y });
+  return buildFixed(
+    p.height,
+    [poolIn(p.poolBox, POOL_OP.redeem), provisionIn(p.provisionBox, PROVISION_OP.redeem), holder],
+    p.inputs,
+    [poolSuccessor(p.poolBox, pool, next), payout],
+    p.owner,
+    { tokenId: pv.ownerNft, amount: 1n },
+  );
+}
+
+export interface FlushParams {
+  height: number;
+  /** the payer's boxes, for the fee */
+  inputs: Box<Amount>[];
+  /** pays the fee and takes the change; anyone */
+  owner: ErgoAddress;
+  poolBox: Box<Amount>;
+  vaultBox: Box<Amount>;
+}
+
+/**
+ * Moves the pool's pending fees into the vault (LD_LiquidityPool op 3, LD_FeeVault op 1). Permissionless: neither
+ * script reads a key, and the caller is paid nothing; it turns fees the vault cannot pay yet into fees a claim can
+ * take. Outputs: the pool less exactly its pending, R6 zeroed; the vault plus exactly that, its R4/R5 set to the
+ * pool's accumulators. The pool refuses a flush with nothing pending.
+ */
+export function buildFlush(p: FlushParams): EIP12UnsignedTransaction {
+  const pool = describePool(p.poolBox);
+  const vault = describeVault(p.vaultBox);
+  if (pool.pendingX <= 0n && pool.pendingY <= 0n)
+    throw new LithosRefusal("nothing-pending", "nothing is pending: the pool refuses a flush that moves nothing");
+  const next = { ...unchangedPool(pool), pendingX: 0n, pendingY: 0n };
+  return buildFixed(
+    p.height,
+    [poolIn(p.poolBox, POOL_OP.flush), vaultFlushIn(p.vaultBox)],
+    p.inputs,
+    [poolSuccessor(p.poolBox, pool, next), vaultFlushed(vault, p.poolBox, pool)],
+    p.owner,
+  );
+}
+
+export interface ResizeQuote {
+  delta: bigint;
+  /** nanoERG and LIT units the wallet pays in (delta > 0) or takes out (delta < 0) */
+  x: bigint;
+  y: bigint;
+  /** the entries the resized provision must carry: what it was owed is preserved, rounded down */
+  entryX: bigint;
+  entryY: bigint;
+}
+
+/** LDLiquidityPool.simResize: growing rounds both sides up, shrinking down; the entry keeps `shares * (acc - entry)`. */
+export function resizeQuote(p: PoolView, pv: ProvisionView, newShares: bigint): ResizeQuote {
+  const delta = newShares - pv.shares;
+  const grow = delta > 0n;
+  const x = grow ? ceilDiv(delta * p.reservesX, p.supply) : (-delta * p.reservesX) / p.supply;
+  const y = grow ? ceilDiv(delta * p.reservesY, p.supply) : (-delta * p.reservesY) / p.supply;
+  return {
+    delta,
+    x,
+    y,
+    entryX: p.accX - (pv.shares * (p.accX - pv.entryX)) / newShares,
+    entryY: p.accY - (pv.shares * (p.accY - pv.entryY)) / newShares,
+  };
+}
+
+export interface ResizeParams {
+  height: number;
+  /** the owner's boxes: one must hold the provision's ownership NFT */
+  inputs: Box<Amount>[];
+  owner: ErgoAddress;
+  poolBox: Box<Amount>;
+  vaultBox: Box<Amount>;
+  provisionBox: Box<Amount>;
+  /** the provision's new size in shares: positive and different from the current one */
+  newShares: bigint;
+}
+
+/**
+ * Changes a provision's size without closing it (LD_LiquidityPool op 4, LD_Provision op 3, LD_FeeVault op 1): the
+ * pool at input 0, the provision at 1, the vault at 2, the NFT's box after; successors at the same indices. Growing
+ * pays `resizeQuote` into the reserves, shrinking takes it out to the change. The provision keeps its value, token
+ * and NFT; R7 becomes the new size and R4/R5 the entries that keep what it had earned (so a resize settles without
+ * paying out, and needs no claim first). The same transaction flushes: the pool's pending fees go to the vault with
+ * its accumulators, which the pool requires so the new entries are right against the vault too. Owner only: the
+ * provision logic requires the NFT among the inputs.
+ */
+export function buildResize(p: ResizeParams): EIP12UnsignedTransaction {
+  const pool = describePool(p.poolBox);
+  const vault = describeVault(p.vaultBox);
+  const pv = describeProvision(p.provisionBox);
+  if (p.newShares <= 0n)
+    throw new LithosRefusal("zero-size", "a provision cannot be resized to nothing: redeem it instead");
+  if (p.newShares === pv.shares) throw new LithosRefusal("same-size", `the provision already has ${pv.shares} shares`);
+  if (pv.value < PROVISION_MIN)
+    throw new LithosRefusal("provision-value", `the provision box holds less than ${PROVISION_MIN} nanoERG`);
+  const q = resizeQuote(pool, pv, p.newShares);
+  if (pool.supply + q.delta < MIN_SUPPLY)
+    throw new LithosRefusal("min-supply", `this resize would take the supply under ${MIN_SUPPLY}`);
+  const holder = nftHolder(p.inputs, pv);
+  const sign = q.delta > 0n ? 1n : -1n;
+  const next = {
+    ...unchangedPool(pool),
+    reservesX: pool.reservesX + sign * q.x,
+    reservesY: pool.reservesY + sign * q.y,
+    pendingX: 0n,
+    pendingY: 0n,
+    supply: pool.supply + q.delta,
+  };
+  if (next.reservesX <= 0n || next.reservesY <= 0n) throw new LithosRefusal("amount", "the pool cannot release that");
+  const pr = p.provisionBox.additionalRegisters;
+  const provision = new OutputBuilder(pv.value, PROVISION_GUARD_TREE)
+    .addTokens({ tokenId: PROVISION_TOKEN, amount: 1n })
+    .setAdditionalRegisters({
+      R4: q.entryX === pool.accX ? p.poolBox.additionalRegisters.R7! : SBigInt(q.entryX).toHex(),
+      R5: q.entryY === pool.accY ? p.poolBox.additionalRegisters.R8! : SBigInt(q.entryY).toHex(),
+      R6: pr.R6!,
+      R7: SLong(p.newShares).toHex(),
+    });
+  return buildFixed(
+    p.height,
+    [
+      poolIn(p.poolBox, POOL_OP.resize),
+      provisionIn(p.provisionBox, PROVISION_OP.resize),
+      vaultFlushIn(p.vaultBox),
+      holder,
+    ],
+    p.inputs,
+    [poolSuccessor(p.poolBox, pool, next), provision, vaultFlushed(vault, p.poolBox, pool)],
+    p.owner,
+  );
+}
+
+export interface RefreshParams {
+  height: number;
+  /** the payer's boxes, for the fee */
+  inputs: Box<Amount>[];
+  /** pays the fee; anyone, the provision's owner or not */
+  owner: ErgoAddress;
+  provisionBox: Box<Amount>;
+}
+
+/** The first height at which a provision box created at `creationHeight` may be refreshed. */
+export const refreshableAt = (creationHeight: number) => creationHeight + REFRESH_AGE + 1;
+
+/**
+ * Re-creates a provision box unchanged so storage rent cannot reach it (LD_Provision op 2). Permissionless, once the
+ * box was created more than REFRESH_AGE (525600, about two years) blocks before the spending block; the successor
+ * (output 0, the provision being input 0) is the same box with `height` as its creation height, which must be within
+ * HEIGHT_SLACK of the spending block. The builder refuses before `refreshableAt`: the logic would reduce to false.
+ */
+export function buildRefresh(p: RefreshParams): EIP12UnsignedTransaction {
+  const pv = describeProvision(p.provisionBox);
+  if (p.height < refreshableAt(pv.creationHeight))
+    throw new LithosRefusal(
+      "not-old-enough",
+      `the provision box was created at ${pv.creationHeight}: it can be refreshed from height ${refreshableAt(pv.creationHeight)}`,
+    );
+  const r = p.provisionBox.additionalRegisters;
+  const successor = new OutputBuilder(pv.value, PROVISION_GUARD_TREE)
+    .addTokens({ tokenId: PROVISION_TOKEN, amount: 1n })
+    .setAdditionalRegisters({ R4: r.R4!, R5: r.R5!, R6: r.R6!, R7: r.R7! });
+  return buildFixed(p.height, [provisionIn(p.provisionBox, PROVISION_OP.refresh)], p.inputs, [successor], p.owner);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
