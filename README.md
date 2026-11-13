@@ -59,7 +59,7 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   no fee to anyone. What it is not: transferable. The buyer is an address written into the box, not a token, so the
   right cannot be resold; SigmaO and Etcha are the token-based options on Ergo. No partial exercise. A call box
   holds one storage-rent fee for its bytes (back on exercise or reclaim); a put box holds the collateral only.
-- **LithosDex** (experimental; branch `lithos`, not deployed): the Lithos protocol's ERG/LIT pool through its order contracts.
+- **LithosDex** (experimental): the Lithos protocol's ERG/LIT pool through its order contracts.
   Place a swap order (ERG for LIT or LIT for ERG) or a deposit order, which an executor fills against the pool for
   a fixed executor fee (0.003 ERG, the official client's default); cancel your own order; claim a liquidity
   provision's fees from the vault with its ownership NFT, resize it, flush the pool's pending fees to the vault
