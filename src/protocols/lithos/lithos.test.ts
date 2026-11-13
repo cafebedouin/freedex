@@ -6,12 +6,11 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoAddress, FEE_CONTRACT } from "@fleet-sdk/core";
 import { FEE } from "../machina/orders";
-import { RECORD, type RecordedClaim, type RecordedOrder } from "../../../test/lithos-record";
+import { RECORD, rebuildClaim, rebuildPlacement } from "../../../test/lithos-record";
 import {
   buildCancel,
   buildClaim,
   buildDepositOrder,
-  buildRedeemOrder,
   buildSwapOrder,
   describeOrder,
   describePool,
@@ -43,63 +42,6 @@ const same = (built: Box<Amount> | EIP12UnsignedTransaction["outputs"][number], 
   expect(built.additionalRegisters).toEqual(recRegs);
   expect(built.creationHeight).toBe(rec.creationHeight);
 };
-
-/** The builder call that places `o`, from the terms its box carries and the inputs its placing transaction spent. */
-export function rebuildPlacement(o: RecordedOrder, inputs: Box<Amount>[] = o.placement.inputs) {
-  const v = describeOrder(o.box)!;
-  const t = v.terms;
-  const common = {
-    height: o.box.creationHeight,
-    inputs,
-    owner: addr(t.owner),
-    executorFee: t.executorFee,
-    maxMinerFee: t.maxMinerFee,
-  };
-  switch (v.kind) {
-    case "swap-sell":
-      return buildSwapOrder({
-        ...common,
-        poolBox: RECORD.poolBox,
-        direction: "erg-to-lit",
-        amountIn: t.baseAmount!,
-        minOut: t.minQuote!,
-      });
-    case "swap-buy":
-      return buildSwapOrder({
-        ...common,
-        poolBox: RECORD.poolBox,
-        direction: "lit-to-erg",
-        amountIn: v.token!.amount,
-        minOut: t.minQuote!,
-      });
-    case "deposit":
-      return buildDepositOrder({
-        ...common,
-        poolBox: RECORD.poolBox,
-        amountX: t.depositX!,
-        amountY: v.token!.amount,
-        minShares: t.minShares!,
-      });
-    case "redeem":
-      return buildRedeemOrder({ ...common, provisionBox: o.provisionBox! });
-  }
-}
-
-/** The claim that `c` made, rebuilt from its inputs: vault, provisions (count from the vault's variable 1), wallet. */
-export function rebuildClaim(c: RecordedClaim, override?: { inputs?: Box<Amount>[]; owner?: ErgoAddress }) {
-  const n = Number.parseInt(c.tx.inputs[0].spendingProof.extension["1"].slice(2), 16) / 2; // SInt, zigzag
-  const wallet = c.inputBoxes.slice(1 + n);
-  return {
-    n,
-    tx: buildClaim({
-      height: c.tx.outputs[0].creationHeight,
-      inputs: override?.inputs ?? wallet,
-      owner: override?.owner ?? ErgoAddress.fromErgoTree(wallet[0].ergoTree),
-      vaultBox: c.inputBoxes[0],
-      provisionBoxes: c.inputBoxes.slice(1, 1 + n),
-    }),
-  };
-}
 
 describe("the record: every recorded order box is one of the four contracts, rebuilt byte for byte", () => {
   it("reads all 51 order boxes, and the template alone is never enough", () => {
