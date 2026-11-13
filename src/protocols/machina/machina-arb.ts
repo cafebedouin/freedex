@@ -5,7 +5,7 @@ import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoAddress, OutputBuilder, TransactionBuilder } from "@fleet-sdk/core";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { POOL_TREE, describePool, quote, type PoolView } from "../ergodex/amm.ts";
-import { FEE, asOrderBox, describe as describeOrder, type OrderView } from "./orders.ts";
+import { FEE, asOrderBox, contractOf, describe as describeOrder, type OrderView } from "./orders.ts";
 
 const ceilDiv = (a: bigint, b: bigint) => (a + b - 1n) / b;
 const bmin = (a: bigint, b: bigint) => (a < b ? a : b);
@@ -75,7 +75,7 @@ export function buildOrderTake(
       { tokenId: pool.tokenId, amount: intoOrder ? pool.y - take.t : pool.y + take.t },
     ])
     .setAdditionalRegisters({ R4: p.poolBox.additionalRegisters.R4 as string });
-  const lo = new LimitOrder(asOrderBox(p.orderBox));
+  const lo = new LimitOrder(asOrderBox(p.orderBox), contractOf(p.orderBox));
   const action = intoOrder ? lo.sell(take.t) : lo.buy(take.t);
   const tx = new TransactionBuilder(p.height)
     .from([p.poolBox])

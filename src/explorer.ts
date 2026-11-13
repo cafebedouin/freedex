@@ -32,6 +32,8 @@ export function storeExplorer(base: string | undefined) {
 
 /** SHA-256 of the Machina E2T limit-order ErgoTree template (src/registry.json). */
 export const E2T_LIMIT_TEMPLATE_SHA256 = hashOf("machina-e2t-limit-order");
+/** Machina's ErgoTree version 2 limit order, the tree live orders carry (src/protocols/machina/orders.ts, E2T_V2). */
+export const E2T_LIMIT_V2_TEMPLATE_SHA256 = hashOf("machina-e2t-limit-order-v2");
 
 interface ExplorerRegister {
   serializedValue: string;
@@ -203,16 +205,20 @@ export class Explorer {
     return { id: r.id, name: r.name ?? "", decimals: r.decimals ?? 0 };
   }
 
-  /** Every unspent box under the E2T limit-order template, newest first, up to `limit`. */
+  /** Every unspent box under the E2T limit-order templates (version 1 and 2), newest first, up to `limit` each. */
   async limitOrders(limit = 100): Promise<Box<bigint>[]> {
     return this.#cached(`orders:${limit}`, () => this.#limitOrders(limit));
   }
   async #limitOrders(limit: number): Promise<Box<bigint>[]> {
-    const r = await this.#json<{ items: ExplorerBox[]; total: number }>(
-      `/api/v1/boxes/unspent/search?limit=${limit}&sortDirection=desc`,
-      { method: "POST", body: JSON.stringify({ ergoTreeTemplateHash: E2T_LIMIT_TEMPLATE_SHA256 }) },
+    const lists = await Promise.all(
+      [E2T_LIMIT_TEMPLATE_SHA256, E2T_LIMIT_V2_TEMPLATE_SHA256].map((hash) =>
+        this.#json<{ items: ExplorerBox[]; total: number }>(
+          `/api/v1/boxes/unspent/search?limit=${limit}&sortDirection=desc`,
+          { method: "POST", body: JSON.stringify({ ergoTreeTemplateHash: hash }) },
+        ),
+      ),
     );
-    return r.items.map(toFleetBox);
+    return lists.flatMap((r) => r.items.map(toFleetBox));
   }
 
   /** Every N2T pool box (NFT, LP token, token), with the token's name and decimals as the explorer carries them. */
