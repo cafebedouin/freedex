@@ -101,6 +101,15 @@ Test: `test/machina-v2.test.ts` over 15 recorded transactions: all 54 version-2 
 fills rebuild to the recorded successor byte for byte and sign and verify under 0.29; the 45 owner closes reduce to
 the owner's key; 0.28.0 fails at parse on the tree each time.
 
+Experimental (the tab's note `orders-v2-note`, and a "v2" mark on each such row): filling or closing a version-2
+order spends a version-2 input, so it needs a wallet whose signing library reads version 2; that library build
+(ergo-lib-wasm 0.29.0 from sigma-rust `688511df`) is not released yet. Nautilus 1.4 cannot sign it: it fails with
+`NonConsumedBytes`, and will until it ships sigma-rust 0.29; the page then shows the sentence in `signing.md`, tip
+consistency 4. The sentence before the wallet prompt for such a fill or close ends with `V2_NOTE`
+(`src/ui/orders.ts`). New orders are still created as version 1 (`buildCreate` without `treeVersion`, which the tab
+never passes), which every wallet signs. Test: `test/ui/orders.test.ts`, "marks a version-2 order v2, and says before
+the prompt that filling it needs a library that reads version 2".
+
 ## EIP-31 Babel bids
 
 The contract is EIP-31's (`ergoplatform/eips`, `eip-0031.md` at `81edece`, fetched 2026-10-29); the registry

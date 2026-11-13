@@ -23,6 +23,18 @@ Every entry is a push to `main` (one Pages run each); the commit is named. Dates
   a liquidity provider's cycle straight against the pool (P0 to P6), the deposit and redeem orders placed and
   cancelled (L6, L7), the `--max-loss` each needs, and the address's provisions in `status`.
 - `ergo-lib-wasm-nodejs-028` (an npm alias of 0.28.0) for the library tests' negative control.
+- Experimental marking: the LithosDex tab carries an "experimental" label and a notice at its top (exercised on
+  mainnet with a library build that is not released yet; placing an order works on any wallet; cancel, claim,
+  resize, flush and the direct pool actions need a wallet whose library reads ErgoTree version 3; Nautilus 1.4
+  fails with `NonConsumedBytes` until it ships sigma-rust 0.29). The Limit orders tab marks version-2 Machina
+  orders "v2" with a note that filling or closing one needs the same library; new orders are still version 1.
+- Tip consistency (`src/tip.ts`, `docs/invariants/signing.md`): before any transaction reaches the signer, the
+  boxes the page brought from the explorer are re-read by id; one spent, no longer known, or confirmed in a block
+  the signer's side may not have (one confirmation against the browser wallet's height, two against the
+  explorer's on the phone path) is refused with the wait stated. The phone's reduction refuses headers older than
+  such a box. A wallet's `NonConsumedBytes`, and a node's double-spend and missing-input refusals, are said in
+  words with what to do; an EIP-12 `{code, info}` error shows its text instead of `[object Object]`. The LithosDex
+  claim reads the vault at the click.
 
 ## 2026-11-06: chaining off the mempool, and the bank's fee
 

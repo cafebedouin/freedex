@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 // The Limit orders tab: Machina orders and Babel boxes grouped by token, best price first on each side.
 import { beforeEach, describe, expect, it } from "vitest";
-import { groupListings, type Listing } from "../../src/ui/orders";
-import { makeWorld } from "./fixtures";
-import { column, connect, el, installFetch, installWallet, loadPage, noWallet, settle } from "./harness";
+import { ErgoBox } from "@fleet-sdk/core";
+import { buildCreate } from "../../src/protocols/machina/orders";
+import { V2_NOTE, groupListings, type Listing } from "../../src/ui/orders";
+import { RSBTC, makeWorld } from "./fixtures";
+import { column, connect, el, installFetch, installWallet, loadPage, noWallet, settle, text } from "./harness";
 
 describe("groupListings", () => {
   const l = (tokenId: string, takerAction: "buy" | "sell", price: bigint): Listing =>
@@ -59,5 +61,60 @@ describe("Limit orders tab", () => {
     expect([...groups[1].querySelectorAll("button")].map((b) => b.textContent)).toEqual(["close"]);
     expect([...groups[0].querySelectorAll("button")].map((b) => b.textContent)).toEqual(["buy", "buy", "sell", "sell"]);
     expect(groups[0].querySelectorAll("input").length).toBe(4);
+  });
+
+  it("marks a version-2 order v2, and says before the prompt that filling it needs a library that reads version 2", async () => {
+    // the stranger offers 1 rsBTC unit under Machina's version-2 tree
+    const tx = buildCreate({
+      height: w.chain.height,
+      inputs: w.stranger.utxos.toArray(),
+      owner: w.stranger.address,
+      side: "buy-tokens",
+      quoteTokenId: RSBTC,
+      price: 2_000n,
+      ergAmount: 10_000_000n,
+      treeVersion: 2,
+    });
+    const o = tx.outputs[0];
+    const e = new ErgoBox(
+      {
+        value: BigInt(o.value),
+        ergoTree: o.ergoTree,
+        creationHeight: o.creationHeight,
+        assets: o.assets.map((a) => ({ tokenId: a.tokenId, amount: BigInt(a.amount) })),
+        additionalRegisters: o.additionalRegisters,
+      },
+      "11".repeat(32),
+      0,
+    );
+    w.world.boxes.push({
+      boxId: e.boxId,
+      transactionId: e.transactionId,
+      index: e.index,
+      value: e.value,
+      ergoTree: e.ergoTree,
+      creationHeight: e.creationHeight,
+      assets: e.assets,
+      additionalRegisters: e.additionalRegisters,
+    });
+    w.me.addBalance({ nanoergs: 0n, tokens: [{ tokenId: RSBTC, amount: 10n }] });
+    const wallet = installWallet(w.chain, w.me);
+    await loadPage();
+    el<HTMLInputElement>("upkeep-on").checked = false;
+    await connect();
+    await settle();
+    expect(text("orders-v2-note")).toMatch(
+      /^Experimental: orders marked "v2" use Machina's ErgoTree version 2 contract/,
+    );
+    expect(text("orders-v2-note")).toContain("New orders placed here are still created as version 1");
+    const rsbtc = [...el("orders").querySelectorAll("details")].find((d) => d.textContent?.startsWith("rsBTC"))!;
+    const sells = [...rsbtc.querySelectorAll("table")].at(-1)!;
+    expect(column(sells, 2)[0]).toMatch(/… v2$/);
+    const row = sells.querySelector("tbody tr")!;
+    row.querySelector("input")!.value = "0.00000001";
+    row.querySelector("button")!.click();
+    await settle(100);
+    expect(wallet.sign_tx).toHaveBeenCalledTimes(1);
+    expect(text("log")).toContain(V2_NOTE);
   });
 });

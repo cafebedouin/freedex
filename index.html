@@ -40,6 +40,8 @@
     summary { cursor: pointer; font-weight: 600; }
     summary .muted { font-weight: 400; }
     h3 { font-size: .95rem; margin: .6rem 0 .2rem; }
+    .badge { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; border: 1px solid currentColor; border-radius: .3rem; padding: 0 .3rem; margin-left: .3rem; vertical-align: .1em; }
+    .notice { border: 1px solid var(--line); border-left: 4px solid currentColor; border-radius: .3rem; padding: .5rem .75rem; background: var(--panel); }
   </style>
 </head>
 <body>
@@ -60,7 +62,7 @@
     <button role="tab" id="tab-btn-escrow" data-tab="escrow" aria-selected="false" aria-controls="tab-escrow">Escrow</button>
     <button role="tab" id="tab-btn-programs" data-tab="programs" aria-selected="false" aria-controls="tab-programs">Programs</button>
     <button role="tab" id="tab-btn-options" data-tab="options" aria-selected="false" aria-controls="tab-options">Options</button>
-    <button role="tab" id="tab-btn-lithos" data-tab="lithos" aria-selected="false" aria-controls="tab-lithos">LithosDex</button>
+    <button role="tab" id="tab-btn-lithos" data-tab="lithos" aria-selected="false" aria-controls="tab-lithos">LithosDex <span class="badge">experimental</span></button>
   </nav>
   <p id="confirm" class="small" role="status" aria-live="polite"></p>
 
@@ -109,6 +111,7 @@
 
     <h2 style="margin-top:1.5rem">Open limit orders</h2>
     <p class="muted small">Every unspent Machina ERG-to-token limit order on mainnet, and every EIP-31 Babel box (a standing bid you can sell tokens into, marked "Babel"), grouped by token, best price first on each side. Prices in ERG per whole token.</p>
+    <p id="orders-v2-note" class="notice small" role="note"><b>Experimental:</b> orders marked "v2" use Machina's ErgoTree version 2 contract. Filling or closing one needs a wallet whose signing library reads version 2 (sigma-rust 0.29, not released yet); Nautilus 1.4 cannot sign it (<code>NonConsumedBytes</code>) until it ships sigma-rust 0.29. New orders placed here are still created as version 1, which every wallet signs.</p>
     <div id="orders">loading…</div>
   </section>
 
@@ -259,7 +262,8 @@
   </section>
 
   <section id="tab-lithos" role="tabpanel" aria-labelledby="tab-btn-lithos" hidden>
-    <p class="muted small">The ERG/LIT pool of the Lithos protocol. Trades and deposits go through an order box: you lock the amounts and an executor fee (0.003 ERG, what the Lithos client's executors accept) in an order, and an executor fills it against the pool at no worse than the minimum you set, or you cancel it and take everything back. Liquidity providers hold a provision, owned by whoever holds its NFT, and claim its share of the fees from the vault. <b>Which wallet can sign what:</b> placing an order spends only your own boxes, so any wallet signs it. A provider can also resize a provision without closing it (the same transaction flushes the pool), and anyone can flush the pool's pending fees to the vault, which is what a claim pays from. Cancelling an order, claiming fees, resizing and flushing spend LithosDex boxes, whose scripts are ErgoTree version 3: that needs a wallet whose signing library reads version 3 (sigma-rust 0.29 or later). Nautilus 1.4 cannot sign them. On the phone path the page reduces them itself with such a library; the Ergo mobile wallet then signs a cancel but cannot show a claim.</p>
+    <p id="lithos-experimental" class="notice small" role="note"><b>Experimental.</b> This tab was exercised on mainnet with a library build that is not released yet (ergo-lib-wasm 0.29.0, built from sigma-rust's development branch). Placing a swap or deposit order works on any wallet, and so does a redeem order. Cancel, claim, resize and flush spend LithosDex boxes, whose scripts are ErgoTree version 3, and need a wallet whose signing library reads version 3. Nautilus 1.4 cannot sign them: it fails with <code>NonConsumedBytes</code>, and will until it ships sigma-rust 0.29. Use small amounts.</p>
+    <p class="muted small">The ERG/LIT pool of the Lithos protocol. Trades and deposits go through an order box: you lock the amounts and an executor fee (0.003 ERG, what the Lithos client's executors accept) in an order, and an executor fills it against the pool at no worse than the minimum you set, or you cancel it and take everything back. Liquidity providers hold a provision, owned by whoever holds its NFT, and claim its share of the fees from the vault. A provider can also resize a provision without closing it (the same transaction flushes the pool), and anyone can flush the pool's pending fees to the vault, which is what a claim pays from. On the phone path the page reduces version-3 spends itself with the library above; the Ergo mobile wallet then signs a cancel but cannot show a claim.</p>
     <h2>The pool</h2>
     <div id="lithos-pool-state" class="muted small">loading…</div>
     <dl id="lithos-pool"></dl>

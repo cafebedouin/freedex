@@ -3,6 +3,7 @@
 import type { Box } from "@fleet-sdk/common";
 import { babelCapacity, buildFillBabel, describeBabel } from "../protocols/babel/babel";
 import {
+  E2T_V2,
   buildClose,
   buildCreate,
   buildFill,
@@ -18,6 +19,10 @@ import { $, err, h, log, table, td, tdCode, option } from "./dom";
 import { listing } from "./listing";
 import type { Store } from "./store";
 import { send } from "./wallet";
+
+/** Said before the wallet prompt for a fill or close of a version-2 Machina order (the tab's note says more). */
+export const V2_NOTE =
+  "this order's contract is ErgoTree version 2: a wallet signs it only if its signing library reads version 2 (sigma-rust 0.29); Nautilus 1.4 cannot";
 
 /** One row on the tab: a Machina order or a Babel box, seen as what a taker may do at what price. */
 export interface Listing {
@@ -116,13 +121,19 @@ export function mountOrders(store: Store) {
     const tr = document.createElement("tr");
     const mine = store.isMine(l.owner);
     if (mine) tr.className = "mine";
+    const v2 = l.kind === "machina" && E2T_V2.validate(l.box.ergoTree);
+    const v2Note = v2 ? `; ${V2_NOTE}` : "";
     tr.append(
       td(priceToErgPerToken(l.price, decimals), "num"),
       td(
         `${formatUnits(l.capacity, decimals)}${l.takerAction === "sell" ? ` (${formatUnits(l.value, ERG_DECIMALS)} ERG)` : ""}`,
         "num",
       ),
-      tdCode(l.owner, `${l.owner.slice(0, 6)}…`, (mine ? " (you)" : "") + (l.kind === "babel" ? " Babel" : "")),
+      tdCode(
+        l.owner,
+        `${l.owner.slice(0, 6)}…`,
+        (mine ? " (you)" : "") + (l.kind === "babel" ? " Babel" : "") + (v2 ? " v2" : ""),
+      ),
     );
     const actions = document.createElement("td");
     const wallet = store.wallet;
@@ -135,7 +146,7 @@ export function mountOrders(store: Store) {
         send(
           store,
           (height, inputs) => buildClose({ height, inputs, owner: wallet.changeAddress, orderBox: l.box }),
-          `Close your order on ${name}: ${l.takerAction === "buy" ? `${formatUnits(l.capacity, decimals)} ${name}` : `${formatUnits(l.value, ERG_DECIMALS)} ERG`} back to you`,
+          `Close your order on ${name}: ${l.takerAction === "buy" ? `${formatUnits(l.capacity, decimals)} ${name}` : `${formatUnits(l.value, ERG_DECIMALS)} ERG`} back to you${v2Note}`,
         )
           .then(reload)
           .catch((e) => log(`close failed: ${err(e)}`));
@@ -159,8 +170,8 @@ export function mountOrders(store: Store) {
           const erg = formatUnits(n * l.price, ERG_DECIMALS);
           const what =
             l.takerAction === "buy"
-              ? `Buy ${formatUnits(n, decimals)} ${name} from this order for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`
-              : `Sell ${formatUnits(n, decimals)} ${name} into this ${l.kind === "babel" ? "Babel bid" : "order"} for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG`;
+              ? `Buy ${formatUnits(n, decimals)} ${name} from this order for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG${v2Note}`
+              : `Sell ${formatUnits(n, decimals)} ${name} into this ${l.kind === "babel" ? "Babel bid" : "order"} for ${erg} ERG (${perToken}), miner fee ${formatUnits(FEE, ERG_DECIMALS)} ERG${v2Note}`;
           void send(store, build, what)
             .then(reload)
             .catch((e) => log(`fill failed: ${err(e)}`));

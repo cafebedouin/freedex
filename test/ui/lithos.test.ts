@@ -2,7 +2,7 @@
 // The LithosDex tab: the recorded mainnet pool and vault boxes in the stubbed explorer, a swap order owned by the
 // visitor, and a provision whose ownership NFT the visitor holds. Each action hands the wallet the transaction the
 // builder makes.
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoBox } from "@fleet-sdk/core";
 import { hex } from "@fleet-sdk/crypto";
@@ -98,6 +98,26 @@ describe("LithosDex tab", () => {
     expect(el("tab-lithos").textContent).toContain("Nautilus 1.4 cannot sign them");
   });
 
+  it("is marked experimental on the tab and at the top of the panel, with what Nautilus 1.4 cannot sign", async () => {
+    noWallet();
+    await loadPage();
+    const btn = document.querySelector<HTMLButtonElement>('nav [data-tab="lithos"]')!;
+    expect(btn.textContent?.replace(/\s+/g, " ").trim()).toBe("LithosDex experimental");
+    const notice = el("lithos-experimental");
+    expect(el("tab-lithos").firstElementChild).toBe(notice);
+    const t = notice.textContent!.replace(/\s+/g, " ");
+    expect(t).toMatch(
+      /^Experimental\. This tab was exercised on mainnet with a library build that is not released yet/,
+    );
+    expect(t).toContain("Placing a swap or deposit order works on any wallet");
+    expect(t).toContain(
+      "Cancel, claim, resize and flush spend LithosDex boxes, whose scripts are ErgoTree version 3, and need a wallet whose signing library reads version 3",
+    );
+    expect(t).toContain(
+      "Nautilus 1.4 cannot sign them: it fails with NonConsumedBytes, and will until it ships sigma-rust 0.29",
+    );
+  });
+
   describe("with a wallet", () => {
     let wallet: WalletStub;
     beforeEach(async () => {
@@ -180,6 +200,50 @@ describe("LithosDex tab", () => {
       expect(v?.owner).toBe(w.me.address.encode());
       expect(v?.terms.baseAmount).toBe(1_000_000_000n);
       expect(BigInt(tx.outputs[0].value)).toBe(1_000_000_000n + 3_000_000n + 1_000_000n);
+    });
+
+    it("refuses a cancel whose order box the explorer has seen spent since the listing; the wallet is not asked", async () => {
+      w.world.spentBy = { [w.myOrder.boxId]: "ee".repeat(32) };
+      const t = el("lithos-orders").querySelector("table")!;
+      [...t.querySelectorAll("button")].find((x) => x.textContent === "cancel")!.click();
+      await settle(100);
+      expect(wallet.sign_tx).not.toHaveBeenCalled();
+      expect(el("log").textContent).toContain(
+        `cancel failed: box ${w.myOrder.boxId.slice(0, 8)}… was spent by transaction eeeeeeee… after the page read it; nothing was signed; press the button again to rebuild against the newest boxes`,
+      );
+    });
+
+    it("refuses a flush on a pool box confirmed in a block the wallet does not report yet, and says how long to wait", async () => {
+      w.world.settled = { [RECORD.poolBox.boxId]: w.chain.height + 1 };
+      el("lithos-flush").querySelector("button")!.click();
+      await settle(100);
+      expect(wallet.sign_tx).not.toHaveBeenCalled();
+      expect(el("log").textContent).toContain(
+        `flush failed: box ${RECORD.poolBox.boxId.slice(0, 8)}… was confirmed in block ${w.chain.height + 1}; your wallet reports block ${w.chain.height}, so its node may not have that block yet. Nothing was signed: wait 1 block (about 2 minutes) and press the button again`,
+      );
+      // once the wallet has the block, the same button builds
+      w.world.settled = { [RECORD.poolBox.boxId]: w.chain.height };
+      el("lithos-flush").querySelector("button")!.click();
+      await vi.waitFor(() => expect(wallet.sign_tx).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    });
+
+    it("says what NonConsumedBytes from the wallet means and points at the experimental note", async () => {
+      wallet.sign_tx.mockRejectedValueOnce({ code: 1, info: "NonConsumedBytes" });
+      el("lithos-provisions").querySelector("table")!.querySelector("button")!.click();
+      await settle(100);
+      expect(el("log").textContent).toContain(
+        "claim failed: your wallet could not read a contract this transaction spends: its signing library does not parse ErgoTree version 2 or 3 (Nautilus 1.4 fails this way, with NonConsumedBytes, until it ships sigma-rust 0.29). Nothing was signed. See the experimental note at the top of the tab (wallet: NonConsumedBytes)",
+      );
+      expect(el("log").textContent).not.toContain("[object Object]");
+    });
+
+    it("says a node's double-spend refusal in plain words, with the rebuild", async () => {
+      wallet.submit_tx.mockRejectedValueOnce({ code: 1, info: "Double spending attempt" });
+      el("lithos-flush").querySelector("button")!.click();
+      await settle(100);
+      expect(el("log").textContent).toMatch(
+        /flush failed: the node refused it as a double spend: .* press the button again to rebuild against the newest boxes \(node: Double spending attempt\)/,
+      );
     });
 
     it("quotes a deposit order at the pool's ratio", async () => {
