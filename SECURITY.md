@@ -26,6 +26,8 @@ project with no bounty programme.
 ## Scope
 
 In scope: everything under `src/`, `contracts/`, `index.html` and the deployed page at
-https://cafebedouin.github.io/freedex/. Out of scope: the third-party contracts the page builds against (ErgoDEX,
-Machina, SigmaFi, SigmaUSD, TokenJay, EIP-31 Babel), the wallets, and the explorer backends; a finding there should
-go to its own maintainers, though a note here is welcome if the page should stop relying on it.
+https://cafebedouin.github.io/freedex/, and whether `vendor/` holds the build its README describes (the `.wasm`
+hashes are recorded there and checked by `test/vendor.test.ts`). Out of scope: the third-party contracts the page
+builds against (ErgoDEX, Machina, SigmaFi, SigmaUSD, TokenJay, EIP-31 Babel, LithosDex), the wallets, the explorer
+backends, and sigma-rust itself (the vendored ergo-lib-wasm build); a finding there should go to its own
+maintainers, though a note here is welcome if the page should stop relying on it.
