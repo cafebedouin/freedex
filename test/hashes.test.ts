@@ -8,11 +8,13 @@ import { blake2b256, hex, sha256 } from "@fleet-sdk/crypto";
 import { compile } from "@fleet-sdk/compiler";
 import { LimitOrder } from "@nautls/machinafi-sdk";
 import { REGISTRY, fillTemplate } from "../src/registry";
+import { E2T_V2 } from "../src/protocols/machina/orders";
 import { POOL_TEMPLATE_SHA256, POOL_TREE, T2T_POOL_TEMPLATE_SHA256, T2T_POOL_TREE } from "../src/protocols/ergodex/amm";
 import { BABEL_TEMPLATE_SHA256 as BABEL_IN_BABEL, babelTree } from "../src/protocols/babel/babel";
 import {
   BABEL_TEMPLATE_SHA256,
   E2T_LIMIT_TEMPLATE_SHA256,
+  E2T_LIMIT_V2_TEMPLATE_SHA256,
   POOL_TEMPLATE_SHA256 as POOL_IN_EXPLORER,
   T2T_POOL_TEMPLATE_SHA256 as T2T_IN_EXPLORER,
 } from "../src/explorer";
@@ -35,8 +37,8 @@ const h = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
 const ids = Object.keys(REGISTRY);
 
 describe("the registry: every entry's hash is the SHA-256 of its template", () => {
-  it("has the twenty-six entries the page builds against, each on mainnet with a 64-hex hash", () => {
-    expect(ids.length).toBe(26);
+  it("has the twenty-seven entries the page builds against, each on mainnet with a 64-hex hash", () => {
+    expect(ids.length).toBe(27);
     for (const id of ids) {
       const e = REGISTRY[id];
       expect(e.network, id).toBe("mainnet");
@@ -100,6 +102,8 @@ describe("the modules read the registry", () => {
     expect(h(babelTree("00".repeat(32)))).toBe(BABEL_TEMPLATE_SHA256);
     expect(BABEL_IN_BABEL).toBe(BABEL_TEMPLATE_SHA256);
     expect(E2T_LIMIT_TEMPLATE_SHA256).toBe(REGISTRY["machina-e2t-limit-order"].templateSha256);
+    expect(E2T_LIMIT_V2_TEMPLATE_SHA256).toBe(REGISTRY["machina-e2t-limit-order-v2"].templateSha256);
+    expect(h(E2T_V2.new("ab".repeat(32)))).toBe(E2T_LIMIT_V2_TEMPLATE_SHA256);
   });
   it("LithosDex: the pool, vault and guard trees and the four order templates", () => {
     expect(LITHOS_POOL_TREE).toBe(REGISTRY["lithosdex-pool"].tree);
