@@ -16,6 +16,8 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   to build if the pool has moved past your slippage tolerance. Two tokens without a direct pool are two swaps through
   ERG.
 - **Limit orders** on [Machina Finance](https://github.com/machinafi/sdk): place one, fill one, close your own.
+  Filling or closing an order under Machina's ErgoTree version 2 contract (marked "v2") is experimental: it needs a
+  wallet whose library reads version 2, which Nautilus 1.4 does not (see Compatibility); new orders are version 1.
   Open orders are grouped by token, best price first on each side. [EIP-31](https://github.com/ergoplatform/eips/blob/master/eip-0031.md)
   Babel boxes, standing bids anyone may sell tokens into, are listed beside them (marked "Babel") and filled the
   same way.
@@ -57,14 +59,18 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
   no fee to anyone. What it is not: transferable. The buyer is an address written into the box, not a token, so the
   right cannot be resold; SigmaO and Etcha are the token-based options on Ergo. No partial exercise. A call box
   holds one storage-rent fee for its bytes (back on exercise or reclaim); a put box holds the collateral only.
-- **LithosDex** (branch `lithos`, not deployed): the Lithos protocol's ERG/LIT pool through its order contracts.
+- **LithosDex** (experimental; branch `lithos`, not deployed): the Lithos protocol's ERG/LIT pool through its order contracts.
   Place a swap order (ERG for LIT or LIT for ERG) or a deposit order, which an executor fills against the pool for
   a fixed executor fee (0.003 ERG, the official client's default); cancel your own order; claim a liquidity
   provision's fees from the vault with its ownership NFT, resize it, flush the pool's pending fees to the vault
   (anyone may), or place an order to redeem it. Every LithosDex script is
-  ErgoTree version 3: any wallet signs a placement (the order is an output), but a cancel or a claim needs a wallet
-  whose library reads version 3 (sigma-rust 0.29; Nautilus 1.4 cannot). The page's own binding is ergo-lib-wasm
-  0.29, vendored from sigma-rust `688511df` until its npm release (`vendor/ergo-lib-wasm-0.29.0-688511df/`).
+  ErgoTree version 3. **Experimental:** it was exercised on mainnet with a library build that is not released yet
+  (ergo-lib-wasm 0.29.0 from sigma-rust `688511df`, vendored in `vendor/ergo-lib-wasm-0.29.0-688511df/` until its
+  npm release), through a separate command-line signer. Placing an order works on any wallet (the order is an
+  output). Cancel, claim, resize, flush and the direct pool actions spend version-3 boxes and need a wallet whose
+  signing library reads ErgoTree version 3; Nautilus 1.4 cannot sign them (it fails with `NonConsumedBytes`) and
+  will not until it ships sigma-rust 0.29. The tab says so on its label and at its top, and the log says so in words
+  when a wallet fails that way.
 - **Chain upkeep while you are here.** With a wallet connected, the page looks every few minutes for boxes anyone
   may act on for a bounty, builds those transactions with no signature and none of your funds, submits them through
   the explorer, and sends the bounty to your address. Today's jobs: Babel bids (EIP-31) priced above their token's
@@ -217,11 +223,17 @@ Only what has been run is listed; see `CHANGELOG.md` for when.
   wallet and Terminus through ErgoPay in its static mode (the page's QR code; a static code of any scannable
   length goes straight to the wallet's signing screen by its source, and the scan itself is the person's check,
   not yet recorded here); Satergo untested.
-- Wallet libraries and ErgoTree versions: placing a LithosDex order or a Machina order works on any wallet;
-  cancelling a LithosDex order, claiming its fees, and closing a version-2 Machina order spend version-2 or -3
-  inputs, which ergo-lib-wasm 0.29 reduces and signs and 0.28.0 (Nautilus 1.4) cannot parse
-  (`test/lithos-lib.test.ts`, `test/machina-v2.test.ts`, against recorded mainnet transactions; desk checks, no
-  wallet run recorded).
+- Wallet libraries and ErgoTree versions (experimental): placing a LithosDex order or a Machina order works on any
+  wallet, and new Machina orders are still created as version 1; cancelling a LithosDex order, claiming its fees,
+  resizing, flushing and the direct pool actions spend version-3 inputs, and filling or closing a version-2 Machina
+  order (marked "v2" on the Limit orders tab) spends a version-2 input. ergo-lib-wasm 0.29 reduces and signs those
+  and 0.28.0 cannot parse them (`test/lithos-lib.test.ts`, `test/machina-v2.test.ts`, against recorded mainnet
+  transactions); Nautilus 1.4 fails on them with `NonConsumedBytes` until it ships sigma-rust 0.29. 0.29.0 is not
+  released on npm yet; the page vendors a build of it. No browser wallet's signing of these is recorded.
+- Chain tip: the page reads boxes from the explorer and the wallet's node submits; before the wallet sees a
+  transaction the page re-reads the boxes it brought and refuses one spent, gone, or confirmed in a block the
+  wallet does not report yet (two confirmations on the phone path), with the wait stated
+  ([signing](docs/invariants/signing.md), tip consistency).
 - Explorers: `api.ergoplatform.com` and `api.ergo.aap.cornell.edu`, both serving `/api/v1` with cross-origin
   reads; either may be chosen in the header, and the page fails over between them.
 - Node: the contracts were checked on Fleet's mock chain (`sigmastate-js`, the node's own interpreter compiled to

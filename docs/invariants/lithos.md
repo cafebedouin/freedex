@@ -11,10 +11,33 @@ and `test/fixtures/lithos-pool-record.json`), `test/ui/lithos.test.ts` (the tab)
 `test/hashes.test.ts` (the registry). Sources: Lithos-Protocol/Lithos-Client at `14ad1fe6`,
 `lithos-lib/src/main/resources/lithosdex/LD_*.ergo` and `lithos-lib/src/main/scala/lithosdex/contracts/LDOrderContracts.scala`.
 
+**Experimental.** The tab carries an "experimental" label on its tab button and a notice at the top of its panel
+(`index.html`, `lithos-experimental`): it was exercised on mainnet with a library build that is not released yet
+(ergo-lib-wasm 0.29.0 from sigma-rust `688511df`, vendored in `vendor/`), through a separate command-line signer,
+not through a browser wallet. Placing an order (swap, deposit, or a redeem order) spends only the wallet's boxes and
+works on any wallet. Cancel, claim, resize, flush and the direct pool operations (`buildSwap`, `buildDeposit`,
+`buildRedeem`, `buildRefresh`; the tab offers resize and flush of these) spend LithosDex boxes and need a wallet
+whose library reads ErgoTree version 3. Nautilus 1.4 cannot sign them: it fails with `NonConsumedBytes`, and will
+until it ships sigma-rust 0.29. When a wallet fails that way the log says so in words and points at the notice
+(`signing.md`, tip consistency 4). Test: `test/ui/lithos.test.ts`, "is marked experimental on the tab and at the top
+of the panel, with what Nautilus 1.4 cannot sign", and "says what NonConsumedBytes from the wallet means and points
+at the experimental note".
+
 Every LithosDex script is ErgoTree version 3. A wallet signs an input under one only if its library parses version 3
 (ergo-lib-wasm 0.29, vendored here until its npm release; 0.28.0, which Nautilus 1.4 ships, fails with
 `NonConsumedBytes`). Placing an order spends only the wallet's boxes; a cancel spends the order box; a claim spends
 the vault and provision boxes.
+
+**Tip consistency.** Every action goes through `send`, which re-reads the LithosDex boxes it spends (pool, vault,
+provision, order) by id right before the wallet sees the transaction and refuses one spent, gone, or confirmed in a
+block the wallet does not report yet (`signing.md`, tip consistency, for the rule and the errors). Flush, resize and
+the order forms read the pool and vault by token at the click; claim reads the vault at the click; cancel uses the
+order box as listed, and the re-read refuses it once it is spent (`TipRefusal` code `spent`). The pool is spent about
+845 times per 10,000 blocks, so a transaction built on it can still be overtaken between the re-read and the node: the
+node refuses it as a double spend, the log says so in words, and pressing the same button rebuilds against the
+newest pool box. Tests: `test/ui/lithos.test.ts`, "refuses a cancel whose order box the explorer has seen spent since
+the listing; the wallet is not asked", "refuses a flush on a pool box confirmed in a block the wallet does not report
+yet, and says how long to wait", "says a node's double-spend refusal in plain words, with the rebuild".
 
 ## Pinning
 
@@ -166,6 +189,8 @@ supply)` (`LDLiquidityPool.simDepositForShares`). Provision box: `PROVISION_MIN`
 
 ## Limits
 
+- Experimental: see the top of this file. No browser wallet's signing of a version-3 spend from this page is recorded;
+  the mainnet transactions were signed by a separate command-line signer from these builders' output.
 - No direct swap or deposit form on the tab (the builders exist; the tab offers orders, and resize and flush).
 - Token-to-token LithosDex pools (`LD_T2T_*`) are not read.
 - A deposit order's LIT is computed at the pool's ratio from the ERG typed, rounded up; the deposit order refunds
