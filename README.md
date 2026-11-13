@@ -60,7 +60,8 @@ beer. Free to run, free to fork, free of anyone's server, and free of interface 
 - **LithosDex** (branch `lithos`, not deployed): the Lithos protocol's ERG/LIT pool through its order contracts.
   Place a swap order (ERG for LIT or LIT for ERG) or a deposit order, which an executor fills against the pool for
   a fixed executor fee (0.003 ERG, the official client's default); cancel your own order; claim a liquidity
-  provision's fees from the vault with its ownership NFT, or place an order to redeem it. Every LithosDex script is
+  provision's fees from the vault with its ownership NFT, resize it, flush the pool's pending fees to the vault
+  (anyone may), or place an order to redeem it. Every LithosDex script is
   ErgoTree version 3: any wallet signs a placement (the order is an output), but a cancel or a claim needs a wallet
   whose library reads version 3 (sigma-rust 0.29; Nautilus 1.4 cannot). The page's own binding is ergo-lib-wasm
   0.29, vendored from sigma-rust `688511df` until its npm release (`vendor/ergo-lib-wasm-0.29.0-688511df/`).
@@ -145,7 +146,8 @@ contents of `dist/`.
   - `sigmausd/bank.ts`, `sigmafi/bonds.ts`, `tokenjay/escrow.ts`: the SigmaUSD bank, SigmaFi bonds and TokenJay
     escrow on their deployed contracts.
   - `lithos/lithos.ts`: the LithosDex pool, vault and provisions, the four order contracts (pinned trees with
-    each term's constant index), the order, cancel and claim builders, and `signerHints`.
+    each term's constant index), the order, cancel and claim builders, the direct pool operations (swap, deposit,
+    redeem, flush, resize, refresh), and `signerHints`.
   - `clock/clock.ts`: the clocked box's two sides (buy and sell) and their builders (create for each side with the
     rent and length checks, the keyless leg and cancel for both); `option/option.ts`: the call and the put.
 - `src/registry.json`, `src/registry.ts`: the contract registry, the one place every tree and template hash the

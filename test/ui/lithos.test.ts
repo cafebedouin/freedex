@@ -6,8 +6,15 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoBox } from "@fleet-sdk/core";
 import { hex } from "@fleet-sdk/crypto";
-import { SColl, SByte } from "@fleet-sdk/serializer";
-import { LIT, VAULT_TREE, describeOrder, describePool, orderTree } from "../../src/protocols/lithos/lithos";
+import { SColl, SByte, SLong } from "@fleet-sdk/serializer";
+import {
+  LIT,
+  VAULT_TREE,
+  describeOrder,
+  describePool,
+  describeProvision,
+  orderTree,
+} from "../../src/protocols/lithos/lithos";
 import { formatUnits } from "../../src/units";
 import { RECORD } from "../lithos-record";
 import { makeWorld } from "./fixtures";
@@ -118,7 +125,7 @@ describe("LithosDex tab", () => {
     it("lists the provision the visitor's NFT owns; claim spends the vault, the provision and the NFT box", async () => {
       const t = el("lithos-provisions").querySelector("table")!;
       expect(t.querySelectorAll("tbody tr").length).toBe(1);
-      expect([...t.querySelectorAll("button")].map((x) => x.textContent)).toEqual(["claim", "redeem order"]);
+      expect([...t.querySelectorAll("button")].map((x) => x.textContent)).toEqual(["claim", "resize", "redeem order"]);
       t.querySelector("button")!.click();
       await settle(100);
       const tx = signed();
@@ -127,6 +134,39 @@ describe("LithosDex tab", () => {
       expect(tx.inputs.some((i) => i.assets.some((a) => a.tokenId === NFT))).toBe(true);
       expect(tx.outputs[0].ergoTree).toBe(VAULT_TREE);
       expect(tx.inputs[1].extension["0"]).toBe("0200");
+    });
+
+    it("resize: hands the wallet the pool, the provision and the vault, with the new size in R7", async () => {
+      const t = el("lithos-provisions").querySelector("table")!;
+      const size = t.querySelector<HTMLInputElement>("input")!;
+      const shares = describeProvision(w.myProvision).shares;
+      expect(size.value).toBe(String(shares));
+      size.value = String(shares / 2n);
+      [...t.querySelectorAll("button")].find((x) => x.textContent === "resize")!.click();
+      await settle(100);
+      const tx = signed();
+      expect(tx.inputs.slice(0, 3).map((i) => i.boxId)).toEqual([
+        RECORD.poolBox.boxId,
+        w.myProvision.boxId,
+        w.vault.boxId,
+      ]);
+      expect(tx.inputs.map((i) => i.extension["0"]).slice(0, 3)).toEqual(["0204", "0203", "0201"]);
+      expect(tx.outputs[1].additionalRegisters.R7).toBe(SLong(shares / 2n).toHex());
+      expect(tx.outputs[2].ergoTree).toBe(VAULT_TREE);
+      expect(el("log").textContent).toMatch(
+        /Resize this provision from \d+ to \d+ shares: .* come back to you; .* reads ErgoTree version 3/,
+      );
+    });
+
+    it("flush: offered while the pool holds pending fees; hands the wallet the pool and the vault", async () => {
+      const b = el("lithos-flush").querySelector("button")!;
+      expect(b.textContent).toBe("flush the pending fees to the vault");
+      b.click();
+      await settle(100);
+      const tx = signed();
+      expect(tx.inputs.slice(0, 2).map((i) => i.boxId)).toEqual([RECORD.poolBox.boxId, w.vault.boxId]);
+      expect(tx.outputs[0].additionalRegisters.R6).toBe("11020000");
+      expect(el("log").textContent).toMatch(/Flush the pool's pending fees .* nothing comes back; this needs a wallet/);
     });
 
     it("quotes a swap order and hands the wallet the order box", async () => {

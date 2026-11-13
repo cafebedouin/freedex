@@ -1,7 +1,8 @@
-// The LithosDex tab: the ERG/LIT pool and its fee vault, swap and deposit orders, the visitor's open orders (cancel)
-// and provisions (claim, redeem order). Orders are executed by the Lithos client's batcher, not by the page. Every
-// contract here is ErgoTree version 3: placing an order spends only the visitor's boxes, so any wallet signs it;
-// cancelling and claiming spend version-3 boxes, which a wallet signs only if its library reads version 3.
+// The LithosDex tab: the ERG/LIT pool and its fee vault (flush), swap and deposit orders, the visitor's open orders
+// (cancel) and provisions (claim, resize, redeem order). Orders are executed by the Lithos client's batcher, not by the
+// page. Every contract here is ErgoTree version 3: placing an order spends only the visitor's boxes, so any wallet
+// signs it; cancelling, claiming, resizing and flushing spend version-3 boxes, which a wallet signs only if its
+// library reads version 3.
 import type { Box } from "@fleet-sdk/common";
 import {
   DEFAULT_EXECUTOR_FEE,
@@ -15,7 +16,9 @@ import {
   buildCancel,
   buildClaim,
   buildDepositOrder,
+  buildFlush,
   buildRedeemOrder,
+  buildResize,
   buildSwapOrder,
   depositShares,
   describeOrder,
@@ -26,6 +29,7 @@ import {
   owed,
   quoteSwap,
   redeemShare,
+  resizeQuote,
   type OrderView,
   type PoolView,
   type ProvisionView,
@@ -82,8 +86,36 @@ export function mountLithos(store: Store) {
     ];
     if (vault) rows.push(["Fee vault", `${erg(vault.v.value)}, ${lit(vault.v.lit)}`]);
     dl($<HTMLDListElement>("lithos-pool"), rows);
+    renderFlush();
     state.done();
     $("lithos-pool-state").textContent = `pool box ${p.boxId.slice(0, 12)}…`;
+  }
+
+  /** Anyone may move the pool's pending fees to the vault; a claim pays only what has been moved. */
+  function renderFlush() {
+    const host = $("lithos-flush");
+    host.replaceChildren();
+    const wallet = store.wallet;
+    if (!pool || !vault || (pool.v.pendingX <= 0n && pool.v.pendingY <= 0n)) return;
+    if (!wallet) return void (host.textContent = "connect a wallet to flush the pending fees to the vault");
+    const b = document.createElement("button");
+    b.textContent = "flush the pending fees to the vault";
+    const p = pool;
+    b.onclick = async () => {
+      try {
+        const poolBox = await store.explorer.latestByToken(POOL_NFT);
+        const vaultBox = await store.explorer.latestByToken(VAULT_NFT);
+        await send(
+          store,
+          (h, inputs) => buildFlush({ height: h, inputs, owner: wallet.changeAddress, poolBox, vaultBox }),
+          `Flush the pool's pending fees (${erg(p.v.pendingX)}, ${lit(p.v.pendingY)}) to the vault, where providers can claim them: you pay the miner fee ${erg(FEE)} and nothing comes back; this ${V3_NOTE}`,
+        );
+        reload();
+      } catch (e) {
+        log(`flush failed: ${err(e)}`);
+      }
+    };
+    host.append(b);
   }
 
   function orderRow(box: Box<bigint>, v: OrderView): HTMLTableRowElement {
@@ -146,6 +178,46 @@ export function mountLithos(store: Store) {
           .then(reload)
           .catch((e) => log(`claim failed: ${err(e)}`));
       actions.append(b, " ");
+    }
+    if (wallet && pool && vault) {
+      // a resize keeps the provision open at another size; the pool flushes in the same transaction
+      const size = document.createElement("input");
+      size.inputMode = "numeric";
+      size.value = String(pv.shares);
+      size.size = 12;
+      size.setAttribute("aria-label", "new size in shares");
+      const b = document.createElement("button");
+      b.textContent = "resize";
+      b.onclick = async () => {
+        try {
+          const newShares = BigInt(size.value.trim());
+          const poolBox = await store.explorer.latestByToken(POOL_NFT);
+          const vaultBox = await store.explorer.latestByToken(VAULT_NFT);
+          const q = resizeQuote(describePool(poolBox), pv, newShares);
+          const moved =
+            q.delta > 0n
+              ? `you pay ${erg(q.x)} and ${lit(q.y)} into the pool`
+              : `${erg(q.x)} and ${lit(q.y)} come back to you`;
+          await send(
+            store,
+            (h, inputs) =>
+              buildResize({
+                height: h,
+                inputs,
+                owner: wallet.changeAddress,
+                poolBox,
+                vaultBox,
+                provisionBox: box,
+                newShares,
+              }),
+            `Resize this provision from ${pv.shares} to ${newShares} shares: ${moved}; fees it has earned stay owed to it, and the pool's pending fees go to the vault in the same transaction; miner fee ${erg(FEE)}; this ${V3_NOTE}`,
+          );
+          reload();
+        } catch (e) {
+          log(`resize failed: ${err(e)}`);
+        }
+      };
+      actions.append(size, b, " ");
     }
     if (wallet) {
       const b = document.createElement("button");
@@ -317,6 +389,9 @@ export function mountLithos(store: Store) {
     }
   };
 
-  store.subscribe("wallet", () => void loadMine().catch((e) => log(`lithos: ${err(e)}`)));
+  store.subscribe("wallet", () => {
+    renderFlush();
+    void loadMine().catch((e) => log(`lithos: ${err(e)}`));
+  });
   return { show: () => void load(), load };
 }
