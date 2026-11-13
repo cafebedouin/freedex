@@ -45,3 +45,13 @@ copied as they appear on the public ledger.
 
 Fleet SDK and its AgeUSD plugin, and `@nautls/machinafi-sdk` (Machina Finance), are MIT-licensed npm packages used
 as dependencies and not copied into this repository.
+
+## ergo-lib-wasm 0.29.0 (CC0 1.0), vendored
+
+`vendor/ergo-lib-wasm-0.29.0-688511df/` carries the npm packages `ergo-lib-wasm-browser` and `ergo-lib-wasm-nodejs`
+0.29.0, the WASM binding of sigma-rust (https://github.com/ergoplatform/sigma-rust), built from commit
+`688511dff3e3436dfdd6bd368e3eeef6f67d59e9` before that version's npm release; the vendor README records how and the
+sha256 of each `.wasm`, which `test/vendor.test.ts` checks against the installed packages. The browser build is
+shipped in the page (the phone path's reduction). sigma-rust and both packages are dedicated to the public domain
+under CC0 1.0 (the packages' `LICENSE` and `package.json`); no notice is required, and this one records the
+provenance. The directory goes when 0.29.0 is published on npm.
