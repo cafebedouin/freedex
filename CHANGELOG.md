@@ -13,6 +13,12 @@ Every entry is a push to `main` (one Pages run each); the commit is named. Dates
   deterministic; every cancel and claim reduces and signs under 0.29 and fails at parse under 0.28.0.
 - Machina's version-2 limit order (`E2T_V2`, registry `machina-e2t-limit-order-v2`): read, filled, closed and
   placed; checked against 54 recorded version-2 order spends.
+- LithosDex straight against the pool, no order: `buildSwap`, `buildDeposit`, `buildRedeem`, `buildFlush`
+  (permissionless), `buildResize` (owner only; flushes in the same transaction) and `buildRefresh` (permissionless
+  after 525600 blocks); refusals are `LithosRefusal` with a code. The tab offers resize beside claim, and flush while
+  fees are pending. Checked against the 63 recorded pool transactions (`test/fixtures/lithos-pool-record.json`):
+  the pool, provision and vault successors rebuild byte for byte; under 0.29 they reduce and sign, under 0.28.0 they
+  fail at parse.
 - `scripts/mainnet-run.ts`: unsigned LithosDex and Machina test transactions for an address, for a separate signer.
 - `ergo-lib-wasm-nodejs-028` (an npm alias of 0.28.0) for the library tests' negative control.
 
