@@ -26,6 +26,10 @@ export interface World {
   /** ids the explorer reports in the mempool (by address) or in a block, for the phone path's wait */
   mempool?: string[];
   confirmed?: string[];
+  /** box id -> the height of the block holding it, for `/api/v1/boxes/<id>` (default: its creation height, at most ten blocks under `height`) */
+  settled?: Record<string, number>;
+  /** box id -> the transaction that spent it, for `/api/v1/boxes/<id>` */
+  spentBy?: Record<string, string>;
 }
 
 const templateHash = (tree: string) => hex.encode(sha256(new ErgoTree(tree).template));
@@ -85,6 +89,17 @@ export function installFetch(w: World) {
         id: String(w.height - i).padStart(64, "0"),
       }));
       body = { items, total: w.height };
+    } else if (/^\/api\/v1\/boxes\/[0-9a-f]{64}$/.test(path)) {
+      // one box by id: a world box is confirmed at its creation height (at most `height` - 10) unless `settled` says otherwise
+      const id = path.slice("/api/v1/boxes/".length);
+      const b = w.boxes.find((x) => x.boxId === id);
+      if (b)
+        body = {
+          ...explorerBox(b, w.tokens),
+          settlementHeight: w.settled?.[id] ?? Math.min(b.creationHeight, w.height - 10),
+          spentTransactionId: w.spentBy?.[id] ?? null,
+        };
+      else status = 404;
     } else if (path.startsWith("/api/v1/boxes/unspent/byAddress/")) {
       const tree = ErgoAddress.fromBase58(path.slice("/api/v1/boxes/unspent/byAddress/".length)).ergoTree;
       const items = w.boxes.filter((b) => b.ergoTree === tree).map((b) => explorerBox(b, w.tokens));

@@ -48,6 +48,10 @@ interface ExplorerBox {
   value: number | string | bigint;
   ergoTree: string;
   creationHeight: number;
+  /** the height of the block that holds the box (confirmed boxes only; a mempool box has none) */
+  settlementHeight?: number;
+  /** the transaction that spent it, on `/api/v1/boxes/<id>` (null while unspent) */
+  spentTransactionId?: string | null;
   assets: { tokenId: string; amount: number | string | bigint; name?: string; decimals?: number }[];
   /** `{serializedValue, …}`, confirmed and mempool alike (seen 2026-11-06); the OpenAPI schema says a bare hex string for mempool boxes, so that is read too */
   additionalRegisters: Record<string, ExplorerRegister | string>;
@@ -111,6 +115,14 @@ export const T2T_POOL_TEMPLATE_SHA256 = hashOf("ergodex-t2t-pool");
 /** SHA-256 of the ErgoDEX v1 N2T pool template (src/registry.json). */
 export const POOL_TEMPLATE_SHA256 = hashOf("ergodex-n2t-pool");
 
+/**
+ * A box as the explorer sees it right now, by id (`Explorer.boxState`): confirmed at a height and unspent or spent
+ * by a transaction in a block, an output of a mempool transaction the page itself followed (`latestByToken`), or not
+ * known to the explorer at all.
+ */
+export type BoxState =
+  { state: "confirmed"; height: number; spentBy?: string } | { state: "mempool" } | { state: "unknown" };
+
 export interface TokenInfo {
   id: string;
   name: string;
@@ -141,6 +153,8 @@ export class Explorer {
   sleep: (ms: number) => Promise<void> = defaultSleep;
   #cache = new Map<string, { at: number; value: unknown }>();
   #degraded = false;
+  /** ids of mempool outputs `#follow` handed out: `boxState` reports them as mempool boxes, not as unknown */
+  #unconfirmed = new Set<string>();
   constructor(base?: string, fallbacks: string[] = EXPLORERS) {
     this.base = base ?? fallbacks[0];
     this.bases = [this.base, ...fallbacks.filter((b) => b !== this.base)];
@@ -365,6 +379,7 @@ export class Explorer {
       }
       const next = nextInChain(current.boxId, tokenId, txs);
       if (!next) return current;
+      this.#unconfirmed.add(next.boxId);
       current = next;
     }
     return current;
@@ -393,6 +408,22 @@ export class Explorer {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * One box by id, read fresh (not cached), for the check right before a transaction goes to the signer: the height
+   * of the block that holds it and the transaction that spent it, if any. The explorer's `/api/v1/boxes/<id>` knows
+   * confirmed boxes only (404 otherwise); a 404 for a mempool output the page itself followed is `mempool`.
+   */
+  async boxState(boxId: string): Promise<BoxState> {
+    const res = await this.#fetchAny(`/api/v1/boxes/${boxId}`);
+    if (res.status === 404) return this.#unconfirmed.has(boxId) ? { state: "mempool" } : { state: "unknown" };
+    if (!res.ok) throw new Error(`explorer ${res.status} on /api/v1/boxes/${boxId.slice(0, 8)}…`);
+    const b = parseExact(await res.text()) as ExplorerBox;
+    if (typeof b.settlementHeight !== "number") return { state: "unknown" };
+    return b.spentTransactionId
+      ? { state: "confirmed", height: b.settlementHeight, spentBy: b.spentTransactionId }
+      : { state: "confirmed", height: b.settlementHeight };
   }
 
   /** Forget the listings, after a transaction of ours changes them. */

@@ -106,6 +106,25 @@ describe("Explorer: latestByToken, unspentByAddressChained, the pool reads", () 
     expect(asked.filter((p) => p.startsWith(MEMPOOL))).toEqual([MEMPOOL + addrA, MEMPOOL + addrB]);
   });
 
+  it("boxState: a box by id, confirmed at its height and spent or not; a followed mempool output; an unknown one", async () => {
+    const { ex, asked } = explorer((p) => {
+      if (p.startsWith("/api/v1/boxes/unspent/byTokenId/")) return { items: [box("aa", treeA, [NFT])] };
+      if (p === MEMPOOL + addrA) return { items: [tx("t1", ["aa"], [box("bb", treeA, [NFT], true)])], total: 1 };
+      if (p === `/api/v1/boxes/${id("c1")}`)
+        return { ...box("c1", treeA), settlementHeight: 1_911_002, spentTransactionId: null };
+      if (p === `/api/v1/boxes/${id("c2")}`)
+        return { ...box("c2", treeA), settlementHeight: 1_911_001, spentTransactionId: "e".repeat(64) };
+      if (p.startsWith(MEMPOOL)) return { items: [], total: 0 };
+    });
+    expect(await ex.boxState(id("c1"))).toEqual({ state: "confirmed", height: 1_911_002 });
+    expect(await ex.boxState(id("c2"))).toEqual({ state: "confirmed", height: 1_911_001, spentBy: "e".repeat(64) });
+    // before the page followed the mempool to bb, a 404 for it is unknown; after, it is a mempool box
+    expect(await ex.boxState(id("bb"))).toEqual({ state: "unknown" });
+    expect((await ex.latestByToken(NFT)).boxId).toBe(id("bb"));
+    expect(await ex.boxState(id("bb"))).toEqual({ state: "mempool" });
+    expect(asked.filter((p) => p === `/api/v1/boxes/${id("c1")}`).length).toBe(1);
+  });
+
   it("stops where it is when the mempool cannot be read, and refuses a token with no unspent box", async () => {
     const { ex } = explorer((p) => {
       if (p.startsWith("/api/v1/boxes/unspent/byTokenId/")) return { items: [box("aa", treeA, [NFT])] };

@@ -66,7 +66,9 @@ export function mountLithos(store: Store) {
   let litDecimals = LIT_DECIMALS;
   const erg = (x: bigint) => `${formatUnits(x, ERG_DECIMALS, 6)} ERG`;
   const lit = (x: bigint) => `${formatUnits(x, litDecimals, 4)} LIT`;
-  const reload = () => setTimeout(() => void load(), 3000);
+  // re-read a few seconds after a submission; a panel no longer in the document (a test's page booted afresh) is left be
+  const panel = $("tab-lithos");
+  const reload = () => setTimeout(() => panel.isConnected && void load(), 3000);
 
   function renderPool() {
     if (!pool) return;
@@ -167,16 +169,22 @@ export function mountLithos(store: Store) {
     if (wallet && vault && o?.claimable) {
       const b = document.createElement("button");
       b.textContent = "claim";
-      const v = vault;
-      b.onclick = () =>
-        send(
-          store,
-          (h, inputs) =>
-            buildClaim({ height: h, inputs, owner: wallet.changeAddress, vaultBox: v.box, provisionBoxes: [box] }),
-          `Claim this provision's fees from the vault: ${erg(o.x)} and ${lit(o.y)} to you, miner fee ${erg(FEE)}; this ${V3_NOTE}`,
-        )
-          .then(reload)
-          .catch((e) => log(`claim failed: ${err(e)}`));
+      b.onclick = async () => {
+        try {
+          // the vault is spent by every flush and every claim: build on the newest one, not the one listed
+          const vaultBox = await store.explorer.latestByToken(VAULT_NFT);
+          const now = owed(describeVault(vaultBox), pv);
+          await send(
+            store,
+            (h, inputs) =>
+              buildClaim({ height: h, inputs, owner: wallet.changeAddress, vaultBox, provisionBoxes: [box] }),
+            `Claim this provision's fees from the vault: ${erg(now.x)} and ${lit(now.y)} to you, miner fee ${erg(FEE)}; this ${V3_NOTE}`,
+          );
+          reload();
+        } catch (e) {
+          log(`claim failed: ${err(e)}`);
+        }
+      };
       actions.append(b, " ");
     }
     if (wallet && pool && vault) {

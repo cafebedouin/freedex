@@ -73,6 +73,23 @@ describe("the reduction", () => {
     expect(back.unsigned_tx().id().to_str()).toBe(built.id);
     expect(chain.execute(tx, { signers: [me] })).toBe(true); // the same transaction is valid on the chain
   });
+  it("refuses headers whose newest is older than the newest block holding an input", () => {
+    const chain = new MockChain({ height: 1_900_000 });
+    const me = chain.newParty("me");
+    me.addBalance({ nanoergs: 10_000_000_000n });
+    const tx = new TransactionBuilder(chain.height)
+      .from(me.utxos.toArray())
+      .to(new OutputBuilder(1_000_000_000n, me.address))
+      .sendChangeTo(me.address)
+      .payFee(FEE)
+      .build()
+      .toEIP12Object();
+    const top = (headers[0] as { height: number }).height;
+    expect(() => reduceTransaction(lib, tx, headers, top + 1)).toThrow(
+      `the explorer's newest header is block ${top}, older than block ${top + 1} that holds an input`,
+    );
+    expect(reduceTransaction(lib, tx, headers, top).bytes.length).toBeGreaterThan(100);
+  });
   it("wants ten headers", () => {
     const chain = new MockChain({ height: 1_900_000 });
     const me = chain.newParty("me");
@@ -184,5 +201,13 @@ describe("the signer", () => {
     await expect(w.signer.sign(w.tx)).rejects.toThrow(/2944 characters, above the 2800/);
     expect(w.shown).toEqual([]);
     expect(w.hidden()).toBe(0);
+  });
+
+  it("refuses to reduce when the explorer's headers are older than a box the page brought, before showing anything", async () => {
+    const w = world(0);
+    await expect(w.signer.sign(w.tx, { newestInput: 1_905_187 })).rejects.toThrow(
+      /newest header is block 1905186, older than block 1905187 that holds an input/,
+    );
+    expect(w.shown).toEqual([]);
   });
 });

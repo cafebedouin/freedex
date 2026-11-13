@@ -74,7 +74,8 @@ export function log(msg: string) {
   logEl.textContent = `${new Date().toISOString().slice(11, 19)} ${msg}\n` + logEl.textContent;
 }
 
-export const err = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** The text of an error: an Error's message, an EIP-12 wallet's `{code, info}` object's info (not "[object Object]"). */
+export { failureText as err } from "../tip";
 
 /** A select option with text and value. */
 export function option(text: string, value: string): HTMLOptionElement {

@@ -1,9 +1,10 @@
 # Signing: invariants (EIP-12 and ErgoPay)
 
 Modules `src/wallet.ts` (the `Signer` interface and the EIP-12 connector), `src/ergopay.ts` (the phone),
-`src/ui/wallet.ts` (`send`, the one path every tab's transaction takes, and the QR panel), `src/ui/swap.ts` (the
-slippage minimum). No registry entry: nothing here is a contract. Tests `test/ergopay.test.ts`,
-`test/ui/phone.test.ts`, `test/ui/swap.test.ts`, `test/ui/header.test.ts`.
+`src/ui/wallet.ts` (`send`, the one path every tab's transaction takes, and the QR panel), `src/tip.ts` (the check of
+the boxes the page brought, and the signer's refusals in plain words), `src/ui/swap.ts` (the slippage minimum). No
+registry entry: nothing here is a contract. Tests `test/ergopay.test.ts`, `test/tip.test.ts`, `test/chain.test.ts`
+(`boxState`), `test/ui/phone.test.ts`, `test/ui/swap.test.ts`, `test/ui/header.test.ts`, `test/ui/lithos.test.ts`.
 
 ## What the page holds
 
@@ -19,7 +20,9 @@ slippage minimum). No registry entry: nothing here is a contract. Tests `test/er
 
 ## `send` (every tab's path, `src/ui/wallet.ts`)
 
-1. Throws `connect a wallet first` with no signer. Everything else is the builder's or the signer's.
+1. Throws `connect a wallet first` with no signer; the tip check's refusals (next section); and, when the signer
+   fails, an Error whose message is `explainFailure` of what it threw (next section). Everything else is the
+   builder's.
 2. The page builds: `height` from the signer (`wallet.ts:49`, `api.get_current_height()`; the explorer's height for
    the phone), `inputs` from the signer's full unspent list (`get_utxos()`, or for the phone
    `unspentByAddressChained`: the confirmed boxes less those a pending transaction spends, plus that address's
@@ -38,7 +41,73 @@ slippage minimum). No registry entry: nothing here is a contract. Tests `test/er
    `test/ui/upkeep.test.ts`, "asks the wallet to sign the collateral hand-over of the matured bond, once" (the
    object handed to `sign_tx` is the built transaction); `test/ui/phone.test.ts`, "shows the code and link for a
    swap, waits, and reports the id the explorer lists".
-6. After a submission the listings cache is dropped (`store.explorer.invalidate()`, `:26`).
+6. After a submission the listings cache is dropped (`store.explorer.invalidate()`). Between the build and the
+   signer, `checkInputs` runs (next section); the signer is called only if it passes.
+
+## Tip consistency (`src/tip.ts`, run by `send` between the build and the signer)
+
+The page reads contract boxes (pools, the bank and oracle, orders, provisions, the vault) from the explorer; the
+transaction is checked and submitted by another node, the browser wallet's or the phone wallet's, which can be a
+block or more behind or ahead. In a run of 25 mainnet transactions built by these builders and signed by a separate
+command-line signer, three were built on a box the explorer already listed, created one block earlier, while the node
+used to check and submit them was still a block behind and answered 404 for it; the signer refused before signing.
+
+1. `checkInputs` throws a `TipRefusal` with a `code`, and nothing is signed:
+   - `spent`: `box <id>… was spent by transaction <id>… after the page read it; nothing was signed; press the button
+again to rebuild against the newest boxes`;
+   - `not-visible`: `box <id>… is no longer known to the explorer (spent in the mempool and gone from its listing, or
+its block was rolled back); nothing was signed; press the button again to rebuild against the newest boxes`;
+   - `too-fresh`: `box <id>… was confirmed in block <S>; your wallet reports block <R>, so its node may not have that
+block yet. Nothing was signed: wait <n> block(s) (about <2n> minutes) and press the button again` (EIP-12), or
+     `…; the explorer is at block <H>, and the phone path waits for 2 confirmations so the phone's node has it too.
+Nothing was signed: wait …` (phone).
+     A failed read of a box throws the explorer's error: the page does not hand over what it could not check. The
+     phone's reduction also throws `the explorer's newest header is block <h>, older than block <S> that holds an
+input: …; nothing was reduced; try again in a minute` (`reduceTransaction`, `newestInput`).
+2. Read: every input and data input of the built transaction that the signer did not hand over (`send` passes the
+   signer's own box ids), each by id from the explorer right then (`Explorer.boxState`, `/api/v1/boxes/<id>`, not
+   cached): the height of the block holding it and the transaction that spent it. A 404 for a mempool output the page
+   itself followed (`latestByToken`) is a mempool box. The signer's height is the one the build used.
+3. The rule: a confirmed box at height `S` passes when `S + MIN_CONFIRMATIONS - 1 <= R`, where `R` is the signer's
+   height and `MIN_CONFIRMATIONS` is 1 for EIP-12 (the wallet reports its own node's height, so one confirmation means
+   that node has the block) and 2 for the phone (the only height is the explorer's, the same source as the box, so
+   one block of margin). A mempool box the page followed passes: building on a pending transaction is on purpose
+   (the bank and pools, `latestByToken`). The visitor's own boxes are not checked: the browser wallet gave them; on
+   the phone path they come from the explorer with the mempool counted (`unspentByAddressChained`).
+4. What the page cannot decide: whether the signer's node has a mempool box the page followed, and anything that
+   happens between this read and the node's check. A box spent there, or a node that is behind, makes the node
+   refuse, and the wallet reports it. `explainFailure` turns the refusals it recognises into plain words, the wallet's
+   or node's own text kept in brackets: `NonConsumedBytes` (the wallet's library does not parse ErgoTree version 2 or 3) gives `your wallet could not read a contract this transaction spends: its signing library does not parse
+ErgoTree version 2 or 3 (Nautilus 1.4 fails this way, with NonConsumedBytes, until it ships sigma-rust 0.29).
+Nothing was signed. See the experimental note at the top of the tab`; the node's `Double spending attempt` gives
+   `the node refused it as a double spend: a box it spends (a pool, the vault or another shared box) was spent by
+someone else's transaction first. Nothing of yours moved; press the button again to rebuild against the newest
+boxes`; `Every input of the transaction should be in UTXO`, `Missing inputs` or `Box with id … not found` give
+   `the wallet's node does not have one of the boxes it spends: the box was spent already, or that node is behind
+the explorer this page reads. Nothing of yours moved; wait a block (about 2 minutes) and press the button again`.
+   Anything else is shown as the wallet's text; an EIP-12 `{code, info}` object shows its `info` (`failureText`,
+   also the tabs' `err`), never `[object Object]`. Rebuilding is pressing the same button: every action that spends
+   a shared box reads it again by token first (the pools by NFT, the bank, the LithosDex pool and vault; a LithosDex
+   claim reads the vault at the click, not the one listed).
+5. `test/tip.test.ts` (the rule on both paths, the waits, `spent` and `not-visible`, only the boxes the signer did not
+   give are asked, the refusals in words); `test/chain.test.ts`, "boxState: …" (confirmed, spent, a followed mempool
+   output, unknown); `test/ergopay.test.ts`, "refuses headers whose newest is older than the newest block holding an
+   input" and "refuses to reduce when the explorer's headers are older than a box the page brought, before showing
+   anything"; `test/ui/lithos.test.ts`, "refuses a cancel whose order box the explorer has seen spent since the
+   listing; the wallet is not asked", "refuses a flush on a pool box confirmed in a block the wallet does not report
+   yet, and says how long to wait" (and builds once the wallet has the block), "says what NonConsumedBytes from the
+   wallet means and points at the experimental note", "says a node's double-spend refusal in plain words, with the
+   rebuild"; `test/ui/phone.test.ts`, "does not reduce a swap on a pool box confirmed in the explorer's newest block:
+   two confirmations on this path".
+6. Still possible, and how it shows: (a) a box spent between the re-read and the node's check (the LithosDex pool is
+   spent about 845 times in 10,000 blocks, a few seconds of exposure here plus however long the visitor takes to
+   confirm in the wallet): the node refuses, the wallet reports it, the log says the double-spend sentence above;
+   (b) a wallet whose node is behind but reports a height it does not have, or a phone wallet's node more than one
+   block behind the explorer: the node refuses with the missing-input sentence (EIP-12), or, on the phone, the phone
+   shows the node's error and the page's wait ends after 20 minutes with `no transaction … seen in 20 minutes; build
+it again to retry` (the page never sees the phone's submission); (c) a mempool box the page followed that the
+   signer's node does not have: the node refuses, as (b); (d) one extra explorer request per box the page brought
+   (at most four on the LithosDex tab, one or two elsewhere), and the action waits for them.
 
 ## The slippage minimum comes from the quote the visitor saw (`src/ui/swap.ts`)
 
@@ -114,8 +183,8 @@ transaction <id>… seen in 20 minutes; build it again to retry` after `POLL_TIM
   builders refuse one block early for that reason (`clock.md`, `option.md`).
 - `Parameters.default_parameters()` are the genesis defaults, not the live ones (the cost limit, the minimum value
   per byte); a transaction near those limits may reduce here and fail there.
-- The explorer's height lags the node's; the phone path builds at the explorer's height, the EIP-12 path at the
-  wallet's.
+- The explorer's height can lag or lead the node's; the phone path builds at the explorer's height, the EIP-12 path at
+  the wallet's, and the tip check above compares the boxes the page brought against that same height.
 - The QR limit is the page's 2,800 characters; a transaction with a dozen or more inputs is refused with the note to
   consolidate first.
 

@@ -7,7 +7,7 @@ import type { Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoAddress, Network } from "@fleet-sdk/core";
 import type * as ErgoLib from "ergo-lib-wasm-browser";
 import type { Explorer } from "./explorer";
-import type { Signer } from "./wallet";
+import type { SignContext, Signer } from "./wallet";
 
 /** The binding's module shape; the Node build (`ergo-lib-wasm-nodejs`) has the same API, so scripts pass that. */
 export type ErgoLibModule = typeof ErgoLib;
@@ -65,11 +65,22 @@ export interface Reduced {
 /**
  * The unsigned transaction with each input's script reduced to a sigma proposition, which is what a wallet signs
  * without the boxes. Needs the inputs and data inputs in full (the EIP-12 object carries them) and a state context
- * from the last ten headers; the pre-header is the newest, as Nautilus builds it.
+ * from the last ten headers; the pre-header is the newest, as Nautilus builds it. Refuses headers whose newest is
+ * older than `newestInput`, the newest block holding an input (the headers would describe a chain without that box).
  */
-export function reduceTransaction(lib: ErgoLibModule, tx: EIP12UnsignedTransaction, headers: unknown[]): Reduced {
+export function reduceTransaction(
+  lib: ErgoLibModule,
+  tx: EIP12UnsignedTransaction,
+  headers: unknown[],
+  newestInput = 0,
+): Reduced {
   if (headers.length < HEADERS_NEEDED)
     throw new Error(`need the last ${HEADERS_NEEDED} block headers, the explorer gave ${headers.length}`);
+  const top = Number((headers[0] as { height?: unknown }).height);
+  if (newestInput > 0 && !(top >= newestInput))
+    throw new Error(
+      `the explorer's newest header is block ${top}, older than block ${newestInput} that holds an input: the headers came from a backend behind the one that listed the box; nothing was reduced; try again in a minute`,
+    );
   const hs = lib.BlockHeaders.from_json(headers.slice(0, HEADERS_NEEDED));
   const pre = lib.PreHeader.from_block_header(hs.get(0));
   const ctx = new lib.ErgoStateContext(pre, hs, lib.Parameters.default_parameters());
@@ -131,10 +142,10 @@ export function phoneSigner(address: ErgoAddress, explorer: Explorer, hooks: Pho
     return boxes.filter((b) => !spent.has(b.boxId)).map(toEip12Box);
   }
 
-  async function sign(tx: EIP12UnsignedTransaction): Promise<string> {
+  async function sign(tx: EIP12UnsignedTransaction, ctx?: SignContext): Promise<string> {
     const lib = await opts.loadLib();
     const headers = await explorer.headers(HEADERS_NEEDED);
-    const r = reduceTransaction(lib, tx, headers);
+    const r = reduceTransaction(lib, tx, headers, ctx?.newestInput ?? 0);
     const tooBig = sizeGuard(r.link);
     if (tooBig) throw new Error(tooBig);
     let cancelled = false;
