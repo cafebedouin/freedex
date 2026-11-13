@@ -11,12 +11,29 @@ import { hex } from "@fleet-sdk/crypto";
 import lib29node from "ergo-lib-wasm-nodejs";
 import lib28node from "ergo-lib-wasm-nodejs-028";
 import { reduceTransaction, type ErgoLibModule } from "../src/ergopay";
-import { buildCancel, describeOrder, orderTree, treeVersion } from "../src/protocols/lithos/lithos";
+import { SBigInt } from "@fleet-sdk/serializer";
+import {
+  HEIGHT_SLACK,
+  REFRESH_AGE,
+  buildCancel,
+  buildRefresh,
+  buildResize,
+  describeOrder,
+  describeProvision,
+  orderTree,
+  treeVersion,
+} from "../src/protocols/lithos/lithos";
 
 import {
+  POOL_RECORD,
   RECORD,
+  poolOf,
   rebuildClaim,
   rebuildPlacement,
+  rebuildPoolTx,
+  rehomeAt,
+  syntheticFunding,
+  type RecordedPoolTx,
   parseTree,
   proveDlog,
   reduce,
@@ -168,9 +185,141 @@ describe("negative control: ergo-lib-wasm 0.28.0 fails at parse on every version
   });
 });
 
+// ---- the direct pool operations: the recorded pool transactions that have their block's headers ----
+
+const TRUE = "d3"; // a keyless input whose script held: the reduced proposition is TrivialProp(true)
+const FALSE = "d2";
+const STRANGER = ErgoAddress.fromPublicKey("02" + "33".repeat(32));
+const fixedOf = { swap: 1, deposit: 1, redeem: 2, flush: 2, resize: 3 } as const;
+const withHeaders = POOL_RECORD.txs.filter((t) => POOL_RECORD.headers[String(t.inclusionHeight)]);
+const poolHeaders = (t: RecordedPoolTx) => POOL_RECORD.headers[String(t.inclusionHeight)];
+/** The rebuilt transaction as its recorded maker would sign it (a stranger's boxes for an executed order) */
+const asRecorded = (t: RecordedPoolTx) =>
+  rebuildPoolTx(t, t.direct && !(t.kind === "flush" && t.inputBoxes.length === 2) ? undefined : STRANGER);
+
+describe("ergo-lib-wasm 0.29: the direct pool builders under the recorded headers", () => {
+  it.each(withHeaders.map((t) => [t.kind, t.txId.slice(0, 8), t] as const))("%s %s", (_k, _id, t) => {
+    const h = poolHeaders(t);
+    const n = fixedOf[t.kind];
+    const tx = asRecorded(t);
+    for (const i of tx.inputs) expect(parseTree(lib29, i.ergoTree), i.boxId).toEqual({ ok: true });
+    const r = reduce(lib29, tx, h);
+    expect(r.err).toBeUndefined();
+    // the pool (and the provision, the vault) hold no key: their scripts held, so each reduces to true
+    for (let i = 0; i < n; i++) expect(r.props![i]).toBe(TRUE);
+    for (let i = n; i < tx.inputs.length; i++) expect(r.props![i]).toBe(proveDlog(tx.inputs[i].ergoTree.slice(6)));
+    expect(reduceTransaction(lib29 as unknown as ErgoLibModule, tx, pageHeaders(h)).txId).toMatch(/^[0-9a-f]{64}$/);
+    // signing with another key stops only at a wallet input, for lack of its secret
+    const s = sign(lib29, tx, h);
+    expect(s.signed).toBeUndefined();
+    expect(s.err).not.toMatch(PARSE);
+    expect(p2pkIndices(tx)).toContain(s.index);
+    // the same transaction made by the throwaway key signs, and the library's verifier accepts every input
+    const synthetic = rebuildPoolTx(t, THROWAWAY);
+    const ok = sign(lib29, synthetic, h);
+    expect(ok.err).toBeUndefined();
+    expect(verifyAll(lib29, synthetic, ok.signed!, h).every(Boolean)).toBe(true);
+  });
+});
+
+describe("resize both ways, and the pool's checks bite: synthetic resizes from the recorded resize's state", () => {
+  const t = poolOf("resize")[0];
+  const h = poolHeaders(t);
+  const [poolBox, provisionBox, vaultBox] = t.inputBoxes;
+  const pv = describeProvision(provisionBox);
+  const wallet = t.inputBoxes.slice(3).map((b) => rehome(b, THROWAWAY.ergoTree));
+  const resize = (newShares: bigint) =>
+    buildResize({
+      height: t.tx.outputs[0].creationHeight,
+      inputs: wallet,
+      owner: THROWAWAY,
+      poolBox,
+      vaultBox,
+      provisionBox,
+      newShares,
+    });
+  it.each([
+    ["shrink to half", pv.shares / 2n],
+    ["shrink by one share", pv.shares - 1n],
+    ["shrink to one share", 1n],
+    ["grow by one share", pv.shares + 1n],
+    ["grow by a tenth", pv.shares + pv.shares / 10n],
+  ] as const)("%s: every LithosDex input reduces to true; the owner signs and every proof verifies", (_n, size) => {
+    const tx = resize(size);
+    const r = reduce(lib29, tx, h);
+    expect(r.err).toBeUndefined();
+    expect(r.props!.slice(0, 3)).toEqual([TRUE, TRUE, TRUE]);
+    const ok = sign(lib29, tx, h);
+    expect(ok.err).toBeUndefined();
+    expect(verifyAll(lib29, tx, ok.signed!, h).every(Boolean)).toBe(true);
+    for (const i of v3(tx)) expect(parseTree(lib28, i.ergoTree).err).toMatch(/NonConsumedBytes/);
+  });
+  it("a shrink that takes one nanoERG more, or sets an entry one lower, makes the pool reduce to false", () => {
+    const tx = resize(pv.shares / 2n);
+    const more = structuredClone(tx);
+    more.outputs[0].value = String(BigInt(tx.outputs[0].value) - 1n);
+    const change = more.outputs.findIndex((o) => o.ergoTree === THROWAWAY.ergoTree);
+    more.outputs[change].value = String(BigInt(tx.outputs[change].value) + 1n);
+    expect(reduce(lib29, more, h).props!.slice(0, 3)).toEqual([FALSE, TRUE, TRUE]);
+    const entry = structuredClone(tx);
+    const e = describeProvision({ ...tx.outputs[1], boxId: "00".repeat(32), transactionId: "00".repeat(32), index: 0 });
+    entry.outputs[1].additionalRegisters.R4 = SBigInt(e.entryX - 1n).toHex();
+    expect(reduce(lib29, entry, h).props!.slice(0, 3)).toEqual([FALSE, TRUE, TRUE]);
+  });
+});
+
+describe("refresh: permissionless once the box is old enough, refused by the logic before (synthetic boxes)", () => {
+  // the recorded resize's provision box, re-dated; the payer is the throwaway key, which owns no NFT
+  const t = poolOf("resize")[0];
+  const h = poolHeaders(t);
+  const H = t.inclusionHeight;
+  const prov = t.inputBoxes[1];
+  const payer = [syntheticFunding(THROWAWAY, t)];
+  const refresh = (createdAt: number, height: number) =>
+    buildRefresh({ height, inputs: payer, owner: THROWAWAY, provisionBox: rehomeAt(prov, prov.ergoTree, createdAt) });
+  it("created REFRESH_AGE + 1 blocks before the spending block: reduces to true, signs and verifies", () => {
+    const tx = refresh(H - REFRESH_AGE - 1, H);
+    expect(tx.outputs[0].creationHeight).toBe(H);
+    const r = reduce(lib29, tx, h);
+    expect(r.props![0]).toBe(TRUE);
+    const ok = sign(lib29, tx, h);
+    expect(ok.err).toBeUndefined();
+    expect(verifyAll(lib29, tx, ok.signed!, h).every(Boolean)).toBe(true);
+    expect(parseTree(lib28, prov.ergoTree).err).toMatch(/NonConsumedBytes/);
+  });
+  it("exactly REFRESH_AGE blocks old, or a successor dated HEIGHT_SLACK back: the logic reduces to false", () => {
+    // the builder checks against the height it is given; under the recorded block's HEIGHT the box is one block short
+    expect(reduce(lib29, refresh(H - REFRESH_AGE, H + 1), h).props![0]).toBe(FALSE);
+    expect(reduce(lib29, refresh(H - REFRESH_AGE - 5000, H - HEIGHT_SLACK), h).props![0]).toBe(FALSE);
+    expect(reduce(lib29, refresh(H - REFRESH_AGE - 5000, H - HEIGHT_SLACK + 1), h).props![0]).toBe(TRUE);
+    expect(() => refresh(H - REFRESH_AGE, H)).toThrow(/can be refreshed from height/);
+  });
+});
+
+describe("negative control: ergo-lib-wasm 0.28.0 fails at parse on every direct pool transaction", () => {
+  it("every one with headers", () => {
+    let v3Inputs = 0;
+    for (const t of withHeaders) {
+      const tx = asRecorded(t);
+      for (const i of v3(tx)) {
+        v3Inputs++;
+        expect(parseTree(lib28, i.ergoTree).err).toMatch(/NonConsumedBytes/);
+      }
+      expect(reduce(lib28, tx, poolHeaders(t)).err).toMatch(PARSE);
+      expect(() => reduceTransaction(lib28 as unknown as ErgoLibModule, tx, pageHeaders(poolHeaders(t)))).toThrow(
+        PARSE,
+      );
+    }
+    expect(withHeaders.length).toBe(20);
+    expect(v3Inputs).toBe(withHeaders.reduce((s, t) => s + fixedOf[t.kind], 0));
+  });
+});
+
 // the counts this file stands on, printed for the record of the run
 describe("summary", () => {
   it("prints the counts", () => {
+    const pk = withHeaders.reduce<Record<string, number>>((m, t) => ({ ...m, [t.kind]: (m[t.kind] ?? 0) + 1 }), {});
+    console.log(`lithos-lib: direct pool transactions with headers ${JSON.stringify(pk)}`);
     const claimV3 = RECORD.claims.reduce((s, c) => s + 1 + rebuildClaim(c).n, 0);
     const kinds = RECORD.orders.reduce<Record<string, number>>(
       (m, o) => ({ ...m, [o.kind]: (m[o.kind] ?? 0) + 1 }),

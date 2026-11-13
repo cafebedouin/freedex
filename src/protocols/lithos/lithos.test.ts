@@ -6,12 +6,25 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { Amount, Box, EIP12UnsignedTransaction } from "@fleet-sdk/common";
 import { ErgoAddress, FEE_CONTRACT } from "@fleet-sdk/core";
 import { FEE } from "../machina/orders";
-import { RECORD, rebuildClaim, rebuildPlacement } from "../../../test/lithos-record";
+import { POOL_RECORD, RECORD, rebuildClaim, rebuildPlacement, rebuildPoolTx } from "../../../test/lithos-record";
+import { SLong } from "@fleet-sdk/serializer";
 import {
+  LithosRefusal,
+  PROVISION_GUARD_TREE,
+  REFRESH_AGE,
   buildCancel,
   buildClaim,
+  buildDeposit,
   buildDepositOrder,
+  buildFlush,
+  buildRedeem,
+  buildRefresh,
+  buildResize,
+  buildSwap,
   buildSwapOrder,
+  depositCost,
+  refreshableAt,
+  resizeQuote,
   describeOrder,
   describePool,
   describeProvision,
@@ -200,6 +213,175 @@ describe("the builders refuse", () => {
     expect(() => buildClaim({ height: 1, inputs: wallet, owner, vaultBox, provisionBoxes: [] })).toThrow(
       /at least one/,
     );
+  });
+});
+
+// ---- the direct pool operations against the recorded pool transactions ----
+
+const SYNTH = ErgoAddress.fromPublicKey("02" + "33".repeat(32));
+const treeSum = (outs: { ergoTree: string; value: Amount }[], tree: string) =>
+  outs.filter((x) => x.ergoTree === tree).reduce((s, x) => s + BigInt(x.value), 0n);
+const tokenSum = (outs: { ergoTree: string; assets: { tokenId: string; amount: Amount }[] }[], tree: string) => {
+  const m = new Map<string, bigint>();
+  for (const o of outs)
+    if (o.ergoTree === tree) for (const a of o.assets) m.set(a.tokenId, (m.get(a.tokenId) ?? 0n) + BigInt(a.amount));
+  return [...m.entries()].filter(([, v]) => v !== 0n).sort();
+};
+const fixedInputs = { swap: 1, deposit: 1, redeem: 2, flush: 2, resize: 3 } as const;
+const POOL_COUNTS: Record<string, number> = {};
+const DEPOSIT_EXTRA: [string, bigint, bigint][] = [];
+
+describe("direct pool operations: the builders' pool, provision and vault successors are the recorded ones", () => {
+  afterAll(() => {
+    console.log(
+      `executed deposits: nanoERG and LIT units the executor put in beyond depositCost ${JSON.stringify(DEPOSIT_EXTRA, (_k, v) => (typeof v === "bigint" ? Number(v) : v))}`,
+    );
+    // facts about the record, checked so a changed fixture is noticed
+    expect(POOL_COUNTS).toEqual({
+      "swap direct": 1,
+      "swap order": 45,
+      "deposit direct": 1,
+      "deposit order": 5,
+      "redeem direct": 1,
+      "redeem order": 1,
+      "flush direct": 8,
+      "resize direct": 1,
+    });
+  });
+  it.each(POOL_RECORD.txs.map((t) => [t.kind, t.txId.slice(0, 8), t] as const))("%s %s", (_k, _id, t) => {
+    const key = `${t.kind} ${t.direct ? "direct" : "order"}`;
+    POOL_COUNTS[key] = (POOL_COUNTS[key] ?? 0) + 1;
+    const flushNoWallet = t.kind === "flush" && t.inputBoxes.length === 2;
+    const tx = rebuildPoolTx(t, t.direct && !flushNoWallet ? undefined : SYNTH);
+    const n = fixedInputs[t.kind];
+    // the contracts' fixed inputs, in place, with the recorded context variables
+    for (let i = 0; i < n; i++) {
+      expect(tx.inputs[i].boxId).toBe(t.tx.inputs[i].boxId);
+      expect(tx.inputs[i].extension).toEqual(t.tx.inputs[i].extension);
+    }
+    // their successors byte for byte (a deposit's provision box too: output 1)
+    const successors = t.kind === "swap" ? 1 : t.kind === "redeem" ? 1 : t.kind === "deposit" ? 2 : n;
+    if (t.kind === "deposit" && !t.direct) {
+      // Intended difference: an executor sizes a deposit from the order's two offers and refunds the excess as the
+      // order contract computes it (LithosDexExecution.depositSplit), so the pool may take a few units more of a
+      // side than the cheapest deposit for the same shares, which is what this builder pays (depositCost). Same
+      // shares, same provision box; the recorded pool took at least as much of each side.
+      same(tx.outputs[1], t.tx.outputs[1]);
+      expect(tx.outputs[0].additionalRegisters).toEqual(t.tx.outputs[0].additionalRegisters);
+      const dx = BigInt(t.tx.outputs[0].value) - BigInt(tx.outputs[0].value);
+      const dy = BigInt(t.tx.outputs[0].assets[1].amount) - BigInt(tx.outputs[0].assets[1].amount);
+      DEPOSIT_EXTRA.push([t.txId.slice(0, 8), dx, dy]);
+      expect(dx >= 0n && dy >= 0n).toBe(true);
+    } else for (let i = 0; i < successors; i++) same(tx.outputs[i], t.tx.outputs[i]);
+    if (!t.direct || flushNoWallet) return;
+    // A wallet made it: everything else that reached the wallet matches too. Intended differences: the page's
+    // 0.001 ERG miner fee (the client paid 0.002), so the wallet keeps 0.001 ERG more; Fleet may spend fewer of the
+    // wallet's boxes than the recorded transaction did (it spent extra boxes for the client's larger fee, or to
+    // consolidate), so the comparison is of what the wallet gained or lost, per token and in ERG.
+    const owner = t.inputBoxes[n].ergoTree;
+    const recFee = treeSum(t.tx.outputs, FEE_CONTRACT);
+    expect(treeSum(tx.outputs, FEE_CONTRACT)).toBe(FEE);
+    const spent = (ids: string[]) => t.inputBoxes.filter((b) => ids.includes(b.boxId) && b.ergoTree === owner);
+    const recSpent = spent(t.tx.inputs.map((i) => i.boxId));
+    const mySpent = spent(tx.inputs.map((i) => i.boxId));
+    const recNet = treeSum(t.tx.outputs, owner) - treeSum(recSpent, owner);
+    const net = treeSum(tx.outputs, owner) - treeSum(mySpent, owner);
+    expect(net - recNet).toBe(recFee - FEE);
+    type Held = { ergoTree: string; assets: { tokenId: string; amount: Amount }[] }[];
+    const tokenNet = (outs: Held, ins: Held) => {
+      const m = new Map(tokenSum(outs, owner));
+      for (const [id, v] of tokenSum(ins, owner)) m.set(id, (m.get(id) ?? 0n) - v);
+      return [...m.entries()].filter(([, v]) => v !== 0n).sort();
+    };
+    expect(tokenNet(tx.outputs, mySpent)).toEqual(tokenNet(t.tx.outputs, recSpent));
+    if (t.kind === "deposit") same(tx.outputs[2], t.tx.outputs[2]); // the ownership NFT, its EIP-4 registers included
+    // the signer: a deposit's provision box is the one script to allow; nothing but the wallet's key signs
+    const h = signerHints(tx, ErgoAddress.fromErgoTree(owner));
+    expect(h.allowTrees).toEqual(t.kind === "deposit" ? [PROVISION_GUARD_TREE] : []);
+    expect(h.signTrees).toEqual([]);
+    expect(h.v3Inputs).toEqual([...Array(n).keys()]);
+  });
+});
+
+describe("the direct builders refuse, each with its code", () => {
+  const code = (f: () => unknown) => {
+    try {
+      f();
+    } catch (e) {
+      return e instanceof LithosRefusal ? e.code : `not a refusal: ${String(e)}`;
+    }
+    return "built";
+  };
+  const resize = POOL_RECORD.txs.find((t) => t.kind === "resize")!;
+  const [poolBox, provisionBox, vaultBox] = resize.inputBoxes;
+  const wallet = resize.inputBoxes.slice(3);
+  const owner = ErgoAddress.fromErgoTree(wallet[0].ergoTree);
+  const pv = describeProvision(provisionBox);
+  const base = { height: resize.inclusionHeight, inputs: wallet, owner, poolBox };
+  const noNft = wallet.map((b) => ({ ...b, assets: b.assets.filter((a) => a.tokenId !== pv.ownerNft) }));
+  it("swap: a non-positive amount, a minimum the pool does not pay", () => {
+    expect(code(() => buildSwap({ ...base, direction: "erg-to-lit", amountIn: 0n, minOut: 1n }))).toBe("amount");
+    const q = quoteSwap(describePool(poolBox), true, 1_000_000n);
+    expect(code(() => buildSwap({ ...base, direction: "erg-to-lit", amountIn: 1_000_000n, minOut: q + 1n }))).toBe(
+      "pool-moved",
+    );
+    expect(code(() => buildSwap({ ...base, direction: "erg-to-lit", amountIn: 1_000_000n, minOut: q }))).toBe("built");
+  });
+  it("deposit: no shares; redeem: no NFT, or a supply left under MIN_SUPPLY", () => {
+    expect(code(() => buildDeposit({ ...base, shares: 0n }))).toBe("amount");
+    expect(code(() => buildDeposit({ ...base, shares: 1n }))).toBe("built");
+    expect(code(() => buildRedeem({ ...base, inputs: noNft, provisionBox }))).toBe("no-owner-nft");
+    const supply = describePool(poolBox).supply;
+    const huge = {
+      ...provisionBox,
+      additionalRegisters: { ...provisionBox.additionalRegisters, R7: SLong(supply).toHex() },
+    };
+    expect(code(() => buildRedeem({ ...base, provisionBox: huge }))).toBe("min-supply");
+    expect(code(() => buildRedeem({ ...base, provisionBox }))).toBe("built");
+  });
+  it("flush: nothing pending (the pool a flush left)", () => {
+    const flush = POOL_RECORD.txs.find((t) => t.kind === "flush")!;
+    expect(code(() => buildFlush({ ...base, poolBox: flush.tx.outputs[0], vaultBox: flush.tx.outputs[1] }))).toBe(
+      "nothing-pending",
+    );
+    expect(code(() => buildFlush({ ...base, poolBox: flush.inputBoxes[0], vaultBox: flush.inputBoxes[1] }))).toBe(
+      "built",
+    );
+  });
+  it("resize: to the same size, to nothing, without the NFT, under MIN_SUPPLY", () => {
+    const r = { ...base, vaultBox, provisionBox };
+    expect(code(() => buildResize({ ...r, newShares: pv.shares }))).toBe("same-size");
+    expect(code(() => buildResize({ ...r, newShares: 0n }))).toBe("zero-size");
+    expect(code(() => buildResize({ ...r, newShares: -1n }))).toBe("zero-size");
+    expect(code(() => buildResize({ ...r, inputs: noNft, newShares: pv.shares + 1n }))).toBe("no-owner-nft");
+    // a provision holding the whole supply, shrunk to one share
+    const supply = describePool(poolBox).supply;
+    const whole = {
+      ...provisionBox,
+      additionalRegisters: { ...provisionBox.additionalRegisters, R7: SLong(supply).toHex() },
+    };
+    expect(code(() => buildResize({ ...r, provisionBox: whole, newShares: 1n }))).toBe("min-supply");
+    expect(code(() => buildResize({ ...r, newShares: 1n }))).toBe("built");
+  });
+  it("refresh: a box younger than REFRESH_AGE, at any height before refreshableAt", () => {
+    const at = refreshableAt(provisionBox.creationHeight);
+    expect(at).toBe(provisionBox.creationHeight + REFRESH_AGE + 1);
+    expect(code(() => buildRefresh({ ...base, height: at - 1, provisionBox }))).toBe("not-old-enough");
+    expect(code(() => buildRefresh({ ...base, height: at, provisionBox }))).toBe("built");
+  });
+  it("the resize's arithmetic: the entry keeps what the provision had earned, rounded down", () => {
+    const p = describePool(poolBox);
+    for (const size of [pv.shares / 2n, pv.shares + 1n, pv.shares * 2n]) {
+      const q = resizeQuote(p, pv, size);
+      const before = pv.shares * (p.accX - pv.entryX);
+      const after = size * (p.accX - q.entryX);
+      expect(after <= before).toBe(true);
+      expect(before - after < size).toBe(true);
+      // the cheapest grow buys at least the shares added, by the pool's own bound; a shrink takes at most its share
+      if (q.delta > 0n) expect((q.x * p.supply) / p.reservesX >= q.delta).toBe(true);
+      else expect(q.x * p.supply <= -q.delta * p.reservesX).toBe(true);
+    }
+    expect(depositCost(p, 1n)).toEqual({ x: 1n, y: (p.reservesY + p.supply - 1n) / p.supply });
   });
 });
 
